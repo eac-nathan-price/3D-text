@@ -8,10 +8,14 @@ interface TextModelProps {
   scale: number;
   foregroundDepth: number;
   backgroundDepth: number;
+  uppercaseOuterOffset: number;
+  uppercaseInnerOffset: number;
+  lowercaseOuterOffset: number;
+  lowercaseInnerOffset: number;
   onDimensionsChange?: (dimensions: { width: number; height: number; depth: number }) => void;
 }
 
-export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth, onDimensionsChange }: TextModelProps) {
+export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth, uppercaseOuterOffset, uppercaseInnerOffset, lowercaseOuterOffset, lowercaseInnerOffset, onDimensionsChange }: TextModelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [referenceTexture, setReferenceTexture] = useState<THREE.Texture | null>(null);
@@ -215,50 +219,43 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
         curveSegments: 16
       } as THREE.ExtrudeGeometryOptions);
       
-      // Create background by scaling the shapes slightly
+      // Create background by creating offset curves
       const backgroundShapes = mainShapes.map(shape => {
         const bgShape = new THREE.Shape();
-        const points = shape.getPoints(32);
-        const center = new THREE.Vector2();
-        points.forEach(p => center.add(p));
-        center.divideScalar(points.length);
+        const points = shape.getPoints(128); // Increased point count for smoother curves
         
-        // Scale points outward from center
-        const scaledPoints = points.map(p => {
-          const dir = new THREE.Vector2().subVectors(p, center).normalize();
-          return new THREE.Vector2().addVectors(p, dir.multiplyScalar(0.75));
-        });
+        // Determine if this shape is for an uppercase or lowercase letter
+        const isUpperCase = points.some(p => p.y < -font.descender * 0.75);
+        const outerOffset = isUpperCase ? uppercaseOuterOffset : lowercaseOuterOffset;
         
-        scaledPoints.forEach((p, i) => {
+        // Create offset curve for outer shape
+        const offsetPoints = createOffsetShape(points, outerOffset);
+        
+        // Create the background shape with the offset points
+        offsetPoints.forEach((p, i) => {
           if (i === 0) {
             bgShape.moveTo(p.x, p.y);
           } else {
             bgShape.lineTo(p.x, p.y);
           }
         });
-        bgShape.closePath();
         
-        // Handle holes - scale them inward
+        // Handle holes - create inward offset curves
         bgShape.holes = shape.holes.map(hole => {
           const holeShape = new THREE.Shape();
-          const holePoints = hole.getPoints(32);
-          const holeCenter = new THREE.Vector2();
-          holePoints.forEach(p => holeCenter.add(p));
-          holeCenter.divideScalar(holePoints.length);
+          const holePoints = hole.getPoints(128); // Increased point count for holes too
+          const innerOffset = isUpperCase ? uppercaseInnerOffset : lowercaseInnerOffset;
           
-          const scaledHolePoints = holePoints.map(p => {
-            const dir = new THREE.Vector2().subVectors(p, holeCenter).normalize();
-            return new THREE.Vector2().addVectors(p, dir.multiplyScalar(-0.75));
-          });
+          // Create inward offset curve for hole
+          const offsetHolePoints = createOffsetShape(holePoints, -innerOffset);
           
-          scaledHolePoints.forEach((p, i) => {
+          offsetHolePoints.forEach((p, i) => {
             if (i === 0) {
               holeShape.moveTo(p.x, p.y);
             } else {
               holeShape.lineTo(p.x, p.y);
             }
           });
-          holeShape.closePath();
           return holeShape;
         });
         
@@ -304,7 +301,7 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
       setIsLoading(false);
       return { foregroundGeometry: null, backgroundGeometry: null };
     }
-  }, [text, font, scale, foregroundDepth, backgroundDepth, onDimensionsChange]);
+  }, [text, font, scale, foregroundDepth, backgroundDepth, uppercaseOuterOffset, uppercaseInnerOffset, lowercaseOuterOffset, lowercaseInnerOffset, onDimensionsChange]);
   
   if (isLoading) {
     return (
@@ -429,4 +426,66 @@ function isPointInShape(shape: THREE.Shape, point: THREE.Vector2): boolean {
   }
   
   return inside;
+}
+
+// Add these helper functions before the TextModel component
+function offsetPoint(p1: THREE.Vector2, p2: THREE.Vector2, offset: number): THREE.Vector2 {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (length === 0) return new THREE.Vector2(p1.x, p1.y);
+  
+  // Calculate normal vector
+  const nx = -dy / length;
+  const ny = dx / length;
+  
+  return new THREE.Vector2(
+    p1.x + nx * offset,
+    p1.y + ny * offset
+  );
+}
+
+function createOffsetShape(points: THREE.Vector2[], offset: number): THREE.Vector2[] {
+  const offsetPoints: THREE.Vector2[] = [];
+  const len = points.length;
+  
+  // First pass: generate simple offset points
+  const rawOffsetPoints: THREE.Vector2[] = [];
+  for (let i = 0; i < len - 1; i++) {
+    const curr = points[i];
+    const next = points[i + 1];
+    rawOffsetPoints.push(offsetPoint(curr, next, offset));
+  }
+  
+  // Second pass: handle corners
+  for (let i = 0; i < len - 1; i++) {
+    const prev = rawOffsetPoints[(i - 1 + len - 1) % (len - 1)];
+    const curr = rawOffsetPoints[i];
+    const next = rawOffsetPoints[(i + 1) % (len - 1)];
+    
+    // Add the current point
+    offsetPoints.push(curr);
+    
+    // If angle between segments is sharp, add extra points to smooth the corner
+    const v1 = new THREE.Vector2().subVectors(curr, prev);
+    const v2 = new THREE.Vector2().subVectors(next, curr);
+    const angle = v1.angle() - v2.angle();
+    
+    if (Math.abs(angle) > Math.PI / 6) { // If angle is greater than 30 degrees
+      const steps = Math.ceil(Math.abs(angle) / (Math.PI / 12)); // One point every 15 degrees
+      for (let j = 1; j < steps; j++) {
+        const t = j / steps;
+        const interpAngle = v1.angle() * (1 - t) + v2.angle() * t;
+        offsetPoints.push(new THREE.Vector2(
+          curr.x + Math.cos(interpAngle) * offset,
+          curr.y + Math.sin(interpAngle) * offset
+        ));
+      }
+    }
+  }
+  
+  // Close the shape
+  offsetPoints.push(offsetPoints[0]);
+  
+  return offsetPoints;
 }

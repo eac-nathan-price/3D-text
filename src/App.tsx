@@ -18,6 +18,10 @@ function App() {
   const [scale, setScale] = useState(1);
   const [foregroundDepth, setForegroundDepth] = useState(1);
   const [backgroundDepth, setBackgroundDepth] = useState(2);
+  const [uppercaseOuterOffset, setUppercaseOuterOffset] = useState(1.25);
+  const [uppercaseInnerOffset, setUppercaseInnerOffset] = useState(0.5);
+  const [lowercaseOuterOffset, setLowercaseOuterOffset] = useState(0.75);
+  const [lowercaseInnerOffset, setLowercaseInnerOffset] = useState(0.5);
   const [error, setError] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number; depth: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -162,6 +166,72 @@ function App() {
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
+
+            <div className="pt-4 border-t border-gray-200">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Background Offsets</h3>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Uppercase Outer Offset (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    max="2"
+                    step="0.05"
+                    value={uppercaseOuterOffset}
+                    onChange={(e) => setUppercaseOuterOffset(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Uppercase Inner Offset (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    max="2"
+                    step="0.05"
+                    value={uppercaseInnerOffset}
+                    onChange={(e) => setUppercaseInnerOffset(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Lowercase Outer Offset (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    max="2"
+                    step="0.05"
+                    value={lowercaseOuterOffset}
+                    onChange={(e) => setLowercaseOuterOffset(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Lowercase Inner Offset (mm)
+                  </label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    max="2"
+                    step="0.05"
+                    value={lowercaseInnerOffset}
+                    onChange={(e) => setLowercaseInnerOffset(Number(e.target.value))}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="bg-gray-50 p-4 rounded-md">
@@ -169,7 +239,8 @@ function App() {
             <ul className="text-sm text-gray-600 space-y-1">
               <li>• Foreground depth: {foregroundDepth}mm</li>
               <li>• Background depth: {backgroundDepth}mm</li>
-              <li>• Outline offset: 0.75mm</li>
+              <li>• Uppercase offsets: {uppercaseOuterOffset}mm outer, {uppercaseInnerOffset}mm inner</li>
+              <li>• Lowercase offsets: {lowercaseOuterOffset}mm outer, {lowercaseInnerOffset}mm inner</li>
               {dimensions && (
                 <>
                   <li className="pt-2 font-medium">Dimensions:</li>
@@ -199,6 +270,10 @@ function App() {
                   scale={scale}
                   foregroundDepth={foregroundDepth}
                   backgroundDepth={backgroundDepth}
+                  uppercaseOuterOffset={uppercaseOuterOffset}
+                  uppercaseInnerOffset={uppercaseInnerOffset}
+                  lowercaseOuterOffset={lowercaseOuterOffset}
+                  lowercaseInnerOffset={lowercaseInnerOffset}
                   onDimensionsChange={setDimensions}
                 />
               )}
