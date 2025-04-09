@@ -6,9 +6,12 @@ interface TextModelProps {
   text: string;
   font: Font;
   scale: number;
+  foregroundDepth: number;
+  backgroundDepth: number;
+  onDimensionsChange?: (dimensions: { width: number; height: number; depth: number }) => void;
 }
 
-export function TextModel({ text, font, scale }: TextModelProps) {
+export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth, onDimensionsChange }: TextModelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [referenceTexture, setReferenceTexture] = useState<THREE.Texture | null>(null);
@@ -207,7 +210,7 @@ export function TextModel({ text, font, scale }: TextModelProps) {
       
       // Create foreground geometry
       const textGeometry = new THREE.ExtrudeGeometry(mainShapes, {
-        depth: 1,
+        depth: foregroundDepth,
         bevelEnabled: false,
         curveSegments: 16
       } as THREE.ExtrudeGeometryOptions);
@@ -263,15 +266,15 @@ export function TextModel({ text, font, scale }: TextModelProps) {
       });
       
       const backgroundGeometry = new THREE.ExtrudeGeometry(backgroundShapes, {
-        depth: 2,
+        depth: backgroundDepth,
         bevelEnabled: false,
         curveSegments: 16
       } as THREE.ExtrudeGeometryOptions);
       
       // Scale to target size (roughly 30mm x 60mm)
       const targetWidth = 60; // mm
-      const bbox = new THREE.Box3().setFromObject(new THREE.Mesh(textGeometry));
-      const currentWidth = bbox.max.x - bbox.min.x;
+      const boundingBox = new THREE.Box3().setFromObject(new THREE.Mesh(textGeometry));
+      const currentWidth = boundingBox.max.x - boundingBox.min.x;
       const scaleFactor = (targetWidth / currentWidth) * scale;
       
       [textGeometry, backgroundGeometry].forEach(geo => {
@@ -284,6 +287,15 @@ export function TextModel({ text, font, scale }: TextModelProps) {
         geo.translate(-center.x, -center.y, 0);
       });
       
+      // Calculate dimensions in mm
+      const bbox = new THREE.Box3().setFromObject(new THREE.Mesh(textGeometry));
+      const dimensions = {
+        width: (bbox.max.x - bbox.min.x),
+        height: (bbox.max.y - bbox.min.y),
+        depth: foregroundDepth + backgroundDepth  // Total depth is sum of both depths
+      };
+      onDimensionsChange?.(dimensions);
+      
       setIsLoading(false);
       return { foregroundGeometry: textGeometry, backgroundGeometry };
     } catch (error) {
@@ -292,7 +304,7 @@ export function TextModel({ text, font, scale }: TextModelProps) {
       setIsLoading(false);
       return { foregroundGeometry: null, backgroundGeometry: null };
     }
-  }, [text, font, scale]);
+  }, [text, font, scale, foregroundDepth, backgroundDepth, onDimensionsChange]);
   
   if (isLoading) {
     return (
@@ -334,8 +346,8 @@ export function TextModel({ text, font, scale }: TextModelProps) {
         <meshBasicMaterial map={referenceTexture} transparent opacity={0.8} side={THREE.DoubleSide} />
       </mesh>
       
-      {/* Background (black, 2mm downward) */}
-      <mesh geometry={backgroundGeometry} position={[0, 0, -2]}>
+      {/* Background (black, extends in -z direction) */}
+      <mesh geometry={backgroundGeometry} position={[0, 0, -backgroundDepth]}>
         <meshStandardMaterial 
           color="black" 
           side={THREE.DoubleSide} 
@@ -344,7 +356,7 @@ export function TextModel({ text, font, scale }: TextModelProps) {
         />
       </mesh>
       
-      {/* Foreground (blue, at z=0) */}
+      {/* Foreground (blue, extends in +z direction) */}
       <mesh geometry={foregroundGeometry} position={[0, 0, 0]}>
         <meshStandardMaterial 
           color="#2196F3" 

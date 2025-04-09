@@ -16,7 +16,10 @@ function App() {
   const [text, setText] = useState('Hello');
   const [font, setFont] = useState<Font | null>(null);
   const [scale, setScale] = useState(1);
+  const [foregroundDepth, setForegroundDepth] = useState(1);
+  const [backgroundDepth, setBackgroundDepth] = useState(2);
   const [error, setError] = useState<string | null>(null);
+  const [dimensions, setDimensions] = useState<{ width: number; height: number; depth: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load default font
@@ -116,28 +119,65 @@ function App() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Scale (mm)
+              XY Scale
             </label>
             <input
-              type="range"
+              type="number"
               min="0.5"
               max="5"
               step="0.1"
               value={scale}
               onChange={(e) => setScale(Number(e.target.value))}
-              className="w-full"
+              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
             />
-            <div className="text-sm text-gray-500 mt-1">
-              Current scale: {scale}mm
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Foreground Depth (mm)
+              </label>
+              <input
+                type="number"
+                min="0.5"
+                max="5"
+                step="0.1"
+                value={foregroundDepth}
+                onChange={(e) => setForegroundDepth(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Background Depth (mm)
+              </label>
+              <input
+                type="number"
+                min="0.5"
+                max="5"
+                step="0.1"
+                value={backgroundDepth}
+                onChange={(e) => setBackgroundDepth(Number(e.target.value))}
+                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
             </div>
           </div>
 
           <div className="bg-gray-50 p-4 rounded-md">
             <h3 className="text-sm font-medium text-gray-900 mb-2">Specifications</h3>
             <ul className="text-sm text-gray-600 space-y-1">
-              <li>• Text extrusion: 1mm</li>
+              <li>• Foreground depth: {foregroundDepth}mm</li>
+              <li>• Background depth: {backgroundDepth}mm</li>
               <li>• Outline offset: 0.75mm</li>
-              <li>• Background depth: 2mm</li>
+              {dimensions && (
+                <>
+                  <li className="pt-2 font-medium">Dimensions:</li>
+                  <li>• Width: {dimensions.width.toFixed(1)}mm</li>
+                  <li>• Height: {dimensions.height.toFixed(1)}mm</li>
+                  <li>• Total depth: {dimensions.depth.toFixed(1)}mm</li>
+                </>
+              )}
             </ul>
           </div>
         </div>
@@ -157,6 +197,9 @@ function App() {
                   text={text}
                   font={font}
                   scale={scale}
+                  foregroundDepth={foregroundDepth}
+                  backgroundDepth={backgroundDepth}
+                  onDimensionsChange={setDimensions}
                 />
               )}
             </Canvas>
