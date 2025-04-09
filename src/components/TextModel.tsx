@@ -16,8 +16,9 @@ export function TextModel({ text, font, scale }: TextModelProps) {
   // Create reference texture
   useEffect(() => {
     const canvas = document.createElement('canvas');
-    canvas.width = 1024;
-    canvas.height = 256;
+    // Make canvas dimensions match the target text size ratio
+    canvas.width = 2048;
+    canvas.height = 1024;
     const ctx = canvas.getContext('2d')!;
 
     // Clear canvas
@@ -26,10 +27,19 @@ export function TextModel({ text, font, scale }: TextModelProps) {
 
     // Draw text
     ctx.fillStyle = 'black';
-    const fontSize = 72;
-    ctx.font = fontSize + 'px ' + font.names.fontFamily.en;
+    // Start with a large font size
+    const fontSize = canvas.height * 0.8;
+    ctx.font = `${fontSize}px ${font.names.fontFamily.en}`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'center';
+
+    // Measure and scale text to match canvas width
+    const textMetrics = ctx.measureText(text);
+    const scale = (canvas.width * 0.8) / textMetrics.width;
+    const finalFontSize = fontSize * scale;
+
+    // Redraw with correct size
+    ctx.font = `${finalFontSize}px ${font.names.fontFamily.en}`;
     ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
     // Create texture
@@ -84,15 +94,6 @@ export function TextModel({ text, font, scale }: TextModelProps) {
             cmd.x1, -cmd.y1,
             cmd.x, flippedY
           );
-        } else if (cmd.type === 'Z') {
-          if (currentShape && firstPoint) {
-            const shape = currentShape as THREE.Shape;
-            shape.lineTo(startX, startY);
-            shape.closePath();
-            shapes.push(shape);
-            currentShape = null;
-            firstPoint = null;
-          }
         }
       });
       
@@ -108,12 +109,17 @@ export function TextModel({ text, font, scale }: TextModelProps) {
         throw new Error('No shapes were created from the text');
       }
       
-      // Sort shapes by area to determine which are holes
+      // Sort shapes by area and ensure correct winding
       const shapesWithInfo = shapes.map(shape => {
         const area = calculateShapeArea(shape);
-        // Note: In OpenType.js, counterclockwise (negative area) is the exterior
-        const isExterior = area < 0;
-        return { shape, area: Math.abs(area), isExterior };
+        const points = shape.getPoints(32);  // Reduced from 96 to 32
+        // In OpenType.js, clockwise (positive area) paths are the exterior
+        if (area < 0) {
+          points.reverse();
+          const newShape = new THREE.Shape(points);
+          return { shape: newShape, area: Math.abs(area), isExterior: true };
+        }
+        return { shape, area: Math.abs(area), isExterior: true };
       }).sort((a, b) => b.area - a.area);
       
       // Group shapes by their bounding boxes to handle multiple letters
@@ -129,7 +135,11 @@ export function TextModel({ text, font, scale }: TextModelProps) {
         // All other shapes in the group become holes
         const holes = group
           .filter(info => info.shape !== mainShape)
-          .map(info => info.shape);
+          .map(info => {
+            const points = info.shape.getPoints(32);  // Reduced from 96 to 32
+            points.reverse(); // Reverse hole winding
+            return new THREE.Shape(points);
+          });
         
         mainShape.holes = holes;
         return mainShape;
@@ -139,30 +149,33 @@ export function TextModel({ text, font, scale }: TextModelProps) {
       const textGeometry = new THREE.ExtrudeGeometry(allShapes, {
         depth: 1,
         bevelEnabled: false,
-        curveSegments: 24
+        curveSegments: 16  // Reduced from 32 to 16
       } as THREE.ExtrudeGeometryOptions);
       
-      // Create background shapes by offsetting each letter
+      // Create background shapes by expanding the foreground shapes
       const backgroundShapes = allShapes.map(shape => {
         const bgShape = new THREE.Shape();
         const outlineOffset = 0.75; // mm
         
-        // Offset the outer contour
-        const outerPoints = shape.getPoints(24);
+        // Get the outer contour points with high resolution
+        const outerPoints = shape.getPoints(32);  // Reduced from 96 to 32
+        
+        // Create the expanded outline
         outerPoints.forEach((point, i) => {
           const prev = outerPoints[(i - 1 + outerPoints.length) % outerPoints.length];
           const next = outerPoints[(i + 1) % outerPoints.length];
           
+          // Calculate direction vectors
           const v1 = new THREE.Vector2().subVectors(point, prev).normalize();
           const v2 = new THREE.Vector2().subVectors(next, point).normalize();
-          const bisector = new THREE.Vector2(v1.x + v2.x, v1.y + v2.y).normalize();
           
-          const angle = Math.acos(v1.dot(v2));
-          const offsetDist = outlineOffset / Math.sin(angle / 2);
+          // Calculate the normal vector (perpendicular to the curve)
+          const normal = new THREE.Vector2(-(v1.y + v2.y), v1.x + v2.x).normalize();
           
+          // Create offset point
           const offsetPoint = new THREE.Vector2(
-            point.x + bisector.x * offsetDist,
-            point.y + bisector.y * offsetDist
+            point.x + normal.x * outlineOffset,
+            point.y + normal.y * outlineOffset
           );
           
           if (i === 0) {
@@ -171,12 +184,13 @@ export function TextModel({ text, font, scale }: TextModelProps) {
             bgShape.lineTo(offsetPoint.x, offsetPoint.y);
           }
         });
+        
         bgShape.closePath();
         
-        // Offset the holes inward
+        // Handle holes
         shape.holes.forEach(hole => {
           const offsetHole = new THREE.Shape();
-          const holePoints = hole.getPoints(24);
+          const holePoints = hole.getPoints(32);  // Reduced from 96 to 32
           
           holePoints.forEach((point, i) => {
             const prev = holePoints[(i - 1 + holePoints.length) % holePoints.length];
@@ -184,14 +198,11 @@ export function TextModel({ text, font, scale }: TextModelProps) {
             
             const v1 = new THREE.Vector2().subVectors(point, prev).normalize();
             const v2 = new THREE.Vector2().subVectors(next, point).normalize();
-            const bisector = new THREE.Vector2(v1.x + v2.x, v1.y + v2.y).normalize();
-            
-            const angle = Math.acos(v1.dot(v2));
-            const offsetDist = outlineOffset / Math.sin(angle / 2);
+            const normal = new THREE.Vector2(-(v1.y + v2.y), v1.x + v2.x).normalize();
             
             const offsetPoint = new THREE.Vector2(
-              point.x - bisector.x * offsetDist,
-              point.y - bisector.y * offsetDist
+              point.x - normal.x * outlineOffset,
+              point.y - normal.y * outlineOffset
             );
             
             if (i === 0) {
@@ -200,6 +211,7 @@ export function TextModel({ text, font, scale }: TextModelProps) {
               offsetHole.lineTo(offsetPoint.x, offsetPoint.y);
             }
           });
+          
           offsetHole.closePath();
           bgShape.holes.push(offsetHole);
         });
@@ -210,7 +222,7 @@ export function TextModel({ text, font, scale }: TextModelProps) {
       const backgroundGeometry = new THREE.ExtrudeGeometry(backgroundShapes, {
         depth: 2,
         bevelEnabled: false,
-        curveSegments: 24
+        curveSegments: 16  // Reduced from 32 to 16
       } as THREE.ExtrudeGeometryOptions);
       
       // Scale to target size (roughly 30mm x 60mm)
@@ -274,19 +286,29 @@ export function TextModel({ text, font, scale }: TextModelProps) {
   return (
     <group>
       {/* Reference plane */}
-      <mesh position={[0, height + 5, 0]}>
-        <planeGeometry args={[width, width / aspectRatio]} />
-        <meshBasicMaterial map={referenceTexture} transparent opacity={0.5} />
+      <mesh position={[0, height + 5, 0]} rotation={[0, 0, 0]}>
+        <planeGeometry args={[width * 1.2, (width * 1.2) / aspectRatio]} />
+        <meshBasicMaterial map={referenceTexture} transparent opacity={0.8} side={THREE.DoubleSide} />
       </mesh>
       
       {/* Background (black, 2mm downward) */}
       <mesh geometry={backgroundGeometry} position={[0, 0, -2]}>
-        <meshStandardMaterial color="black" side={THREE.DoubleSide} />
+        <meshStandardMaterial 
+          color="black" 
+          side={THREE.DoubleSide} 
+          roughness={0.5}
+          metalness={0.5}
+        />
       </mesh>
       
-      {/* Foreground (blue, 1mm upward) */}
+      {/* Foreground (blue, at z=0) */}
       <mesh geometry={foregroundGeometry} position={[0, 0, 0]}>
-        <meshStandardMaterial color="#2196F3" side={THREE.DoubleSide} />
+        <meshStandardMaterial 
+          color="#2196F3" 
+          side={THREE.DoubleSide} 
+          roughness={0.3}
+          metalness={0.7}
+        />
       </mesh>
     </group>
   );
@@ -311,13 +333,13 @@ function groupShapesByPosition(shapes: { shape: THREE.Shape; area: number; isExt
 
   shapes.forEach(shapeInfo => {
     const bbox = new THREE.Box2();
-    shapeInfo.shape.getPoints(24).forEach(point => bbox.expandByPoint(point));
+    shapeInfo.shape.getPoints(16).forEach(point => bbox.expandByPoint(point));  // Reduced from 24 to 16
     
     // Find a group that this shape belongs to
     let foundGroup = false;
     for (const group of groups) {
       const groupBBox = new THREE.Box2();
-      group[0].shape.getPoints(24).forEach(point => groupBBox.expandByPoint(point));
+      group[0].shape.getPoints(16).forEach(point => groupBBox.expandByPoint(point));  // Reduced from 24 to 16
       
       if (bbox.intersectsBox(groupBBox) || 
           Math.abs(bbox.min.x - groupBBox.max.x) < tolerance ||
