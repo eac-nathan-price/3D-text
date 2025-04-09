@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, Suspense } from 'react';
+import React, { useState, useRef, useCallback, Suspense, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { parse, Font } from 'opentype.js';
@@ -19,24 +19,37 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFontUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Load default font
+  useEffect(() => {
+    loadDefaultFont();
+  }, []);
+
+  const loadDefaultFont = async () => {
+    try {
+      const response = await fetch('/fonts/Lucy Said Ok Personal Use.ttf');
+      const fontBuffer = await response.arrayBuffer();
+      const loadedFont = parse(fontBuffer);
+      setFont(loadedFont);
+    } catch (err) {
+      console.error('Error loading default font:', err);
+      setError('Failed to load default font');
+    }
+  };
+
+  const handleFontUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const buffer = e.target?.result as ArrayBuffer;
-      try {
-        const loadedFont = parse(buffer);
-        setFont(loadedFont);
-        setError(null);
-      } catch (err) {
-        console.error('Error loading font:', err);
-        setError('Error loading font. Please try another .ttf file.');
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  }, []);
+    try {
+      const buffer = await file.arrayBuffer();
+      const loadedFont = parse(buffer);
+      setFont(loadedFont);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading font:', err);
+      setError('Failed to load font');
+    }
+  };
 
   if (error) {
     return (
