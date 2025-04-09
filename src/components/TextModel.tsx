@@ -59,161 +59,204 @@ export function TextModel({ text, font, scale }: TextModelProps) {
       const baseline = (font.ascender + font.descender) / 2;
       const path = font.getPath(text, -textWidth / 2, baseline / 2, fontSize);
       
-      // Create shapes array to store all shapes
-      const shapes: THREE.Shape[] = [];
-      let currentShape: THREE.Shape | null = null;
-      let firstPoint: THREE.Vector2 | null = null;
-      let startX = 0, startY = 0;
+      // First pass: collect all paths and determine their types
+      interface Point2D {
+        x: number;
+        y: number;
+      }
       
-      // Process each path command
+      let currentContour: Point2D[] = [];
+      let allContours: Point2D[][] = [];
+      
       path.commands.forEach((cmd: any) => {
-        // Flip Y coordinates to match Three.js coordinate system
-        const flippedY = -cmd.y;
+        const y = -cmd.y; // Flip Y coordinates
         
-        if (cmd.type === 'M') {
-          if (currentShape) {
-            currentShape.closePath();
-            shapes.push(currentShape);
-          }
-          
-          currentShape = new THREE.Shape();
-          firstPoint = new THREE.Vector2(cmd.x, flippedY);
-          startX = cmd.x;
-          startY = flippedY;
-          currentShape.moveTo(cmd.x, flippedY);
-        } else if (cmd.type === 'L') {
-          currentShape!.lineTo(cmd.x, flippedY);
-        } else if (cmd.type === 'C') {
-          currentShape!.bezierCurveTo(
-            cmd.x1, -cmd.y1,
-            cmd.x2, -cmd.y2,
-            cmd.x, flippedY
-          );
-        } else if (cmd.type === 'Q') {
-          currentShape!.quadraticCurveTo(
-            cmd.x1, -cmd.y1,
-            cmd.x, flippedY
-          );
+        switch (cmd.type) {
+          case 'M':
+            if (currentContour.length > 0) {
+              allContours.push([...currentContour]);
+              currentContour = [];
+            }
+            currentContour.push({ x: cmd.x, y });
+            break;
+            
+          case 'L':
+            currentContour.push({ x: cmd.x, y });
+            break;
+            
+          case 'C':
+            // For cubic curves, we'll approximate with multiple line segments
+            const steps = 8;
+            for (let i = 1; i <= steps; i++) {
+              const t = i / steps;
+              const t2 = t * t;
+              const t3 = t2 * t;
+              const mt = 1 - t;
+              const mt2 = mt * mt;
+              const mt3 = mt2 * mt;
+              
+              const x = (mt3 * currentContour[currentContour.length - 1].x) +
+                       (3 * mt2 * t * cmd.x1) +
+                       (3 * mt * t2 * cmd.x2) +
+                       (t3 * cmd.x);
+                       
+              const y = (mt3 * currentContour[currentContour.length - 1].y) +
+                       (3 * mt2 * t * -cmd.y1) +
+                       (3 * mt * t2 * -cmd.y2) +
+                       (t3 * -cmd.y);
+                       
+              currentContour.push({ x, y });
+            }
+            break;
+            
+          case 'Q':
+            // For quadratic curves, we'll approximate with multiple line segments
+            const qSteps = 6;
+            for (let i = 1; i <= qSteps; i++) {
+              const t = i / qSteps;
+              const t2 = t * t;
+              const mt = 1 - t;
+              const mt2 = mt * mt;
+              
+              const x = (mt2 * currentContour[currentContour.length - 1].x) +
+                       (2 * mt * t * cmd.x1) +
+                       (t2 * cmd.x);
+                       
+              const y = (mt2 * currentContour[currentContour.length - 1].y) +
+                       (2 * mt * t * -cmd.y1) +
+                       (t2 * -cmd.y);
+                       
+              currentContour.push({ x, y });
+            }
+            break;
+            
+          case 'Z':
+            if (currentContour.length > 0) {
+              // Close the contour by connecting back to the first point
+              currentContour.push({ ...currentContour[0] });
+              allContours.push([...currentContour]);
+              currentContour = [];
+            }
+            break;
         }
       });
       
-      // Handle any remaining shape
-      if (currentShape && firstPoint) {
-        const shape = currentShape as THREE.Shape;
-        shape.lineTo(startX, startY);
-        shape.closePath();
-        shapes.push(shape);
+      // Add any remaining contour
+      if (currentContour.length > 0) {
+        currentContour.push({ ...currentContour[0] });
+        allContours.push([...currentContour]);
       }
       
-      if (shapes.length === 0) {
-        throw new Error('No shapes were created from the text');
-      }
+      // Create shapes from contours
+      const shapes = allContours.map(contour => {
+        const shape = new THREE.Shape();
+        contour.forEach((point, i) => {
+          if (i === 0) {
+            shape.moveTo(point.x, point.y);
+          } else {
+            shape.lineTo(point.x, point.y);
+          }
+        });
+        return shape;
+      });
       
-      // Sort shapes by area and ensure correct winding
-      const shapesWithInfo = shapes.map(shape => {
+      // Sort shapes by area and identify holes
+      const shapesWithArea = shapes.map(shape => {
         const area = calculateShapeArea(shape);
-        const points = shape.getPoints(32);  // Reduced from 96 to 32
-        // In OpenType.js, clockwise (positive area) paths are the exterior
-        if (area < 0) {
-          points.reverse();
-          const newShape = new THREE.Shape(points);
-          return { shape: newShape, area: Math.abs(area), isExterior: true };
-        }
-        return { shape, area: Math.abs(area), isExterior: true };
+        const bbox = new THREE.Box2();
+        shape.getPoints(32).forEach(p => bbox.expandByPoint(p));
+        return {
+          shape,
+          area: Math.abs(area),
+          isHole: area > 0,  // In OpenType.js, positive area means it's a hole
+          bbox
+        };
       }).sort((a, b) => b.area - a.area);
       
-      // Group shapes by their bounding boxes to handle multiple letters
-      const letterGroups = groupShapesByPosition(shapesWithInfo);
+      // Group shapes by containment
+      const mainShapes: THREE.Shape[] = [];
+      const remainingSholes = shapesWithArea.filter(s => s.isHole);
       
-      // Process each letter group
-      const allShapes = letterGroups.map(group => {
-        // Find the largest shape in the group
-        const mainShape = group.reduce((largest, current) => {
-          return current.area > largest.area ? current : largest;
-        }).shape;
+      shapesWithArea.filter(s => !s.isHole).forEach(mainShapeInfo => {
+        const shape = mainShapeInfo.shape;
+        const holes: THREE.Shape[] = [];
         
-        // All other shapes in the group become holes
-        const holes = group
-          .filter(info => info.shape !== mainShape)
-          .map(info => {
-            const points = info.shape.getPoints(32);  // Reduced from 96 to 32
-            points.reverse(); // Reverse hole winding
-            return new THREE.Shape(points);
-          });
+        // Find holes that are contained within this shape
+        for (let i = remainingSholes.length - 1; i >= 0; i--) {
+          const holeInfo = remainingSholes[i];
+          const holeBBox = holeInfo.bbox;
+          const shapeBBox = mainShapeInfo.bbox;
+          
+          // Check if hole's bounding box is contained within shape's bounding box
+          if (holeBBox.min.x >= shapeBBox.min.x && 
+              holeBBox.max.x <= shapeBBox.max.x &&
+              holeBBox.min.y >= shapeBBox.min.y &&
+              holeBBox.max.y <= shapeBBox.max.y) {
+            // Check if any point of the hole is inside the shape
+            const holePoint = holeInfo.shape.getPoints(1)[0];
+            if (isPointInShape(shape, holePoint)) {
+              holes.push(holeInfo.shape);
+              remainingSholes.splice(i, 1);
+            }
+          }
+        }
         
-        mainShape.holes = holes;
-        return mainShape;
+        shape.holes = holes;
+        mainShapes.push(shape);
       });
       
       // Create foreground geometry
-      const textGeometry = new THREE.ExtrudeGeometry(allShapes, {
+      const textGeometry = new THREE.ExtrudeGeometry(mainShapes, {
         depth: 1,
         bevelEnabled: false,
-        curveSegments: 16  // Reduced from 32 to 16
+        curveSegments: 16
       } as THREE.ExtrudeGeometryOptions);
       
-      // Create background shapes by expanding the foreground shapes
-      const backgroundShapes = allShapes.map(shape => {
+      // Create background by scaling the shapes slightly
+      const backgroundShapes = mainShapes.map(shape => {
         const bgShape = new THREE.Shape();
-        const outlineOffset = 0.75; // mm
+        const points = shape.getPoints(32);
+        const center = new THREE.Vector2();
+        points.forEach(p => center.add(p));
+        center.divideScalar(points.length);
         
-        // Get the outer contour points with high resolution
-        const outerPoints = shape.getPoints(32);  // Reduced from 96 to 32
-        
-        // Create the expanded outline
-        outerPoints.forEach((point, i) => {
-          const prev = outerPoints[(i - 1 + outerPoints.length) % outerPoints.length];
-          const next = outerPoints[(i + 1) % outerPoints.length];
-          
-          // Calculate direction vectors
-          const v1 = new THREE.Vector2().subVectors(point, prev).normalize();
-          const v2 = new THREE.Vector2().subVectors(next, point).normalize();
-          
-          // Calculate the normal vector (perpendicular to the curve)
-          const normal = new THREE.Vector2(-(v1.y + v2.y), v1.x + v2.x).normalize();
-          
-          // Create offset point
-          const offsetPoint = new THREE.Vector2(
-            point.x + normal.x * outlineOffset,
-            point.y + normal.y * outlineOffset
-          );
-          
-          if (i === 0) {
-            bgShape.moveTo(offsetPoint.x, offsetPoint.y);
-          } else {
-            bgShape.lineTo(offsetPoint.x, offsetPoint.y);
-          }
+        // Scale points outward from center
+        const scaledPoints = points.map(p => {
+          const dir = new THREE.Vector2().subVectors(p, center).normalize();
+          return new THREE.Vector2().addVectors(p, dir.multiplyScalar(0.75));
         });
         
+        scaledPoints.forEach((p, i) => {
+          if (i === 0) {
+            bgShape.moveTo(p.x, p.y);
+          } else {
+            bgShape.lineTo(p.x, p.y);
+          }
+        });
         bgShape.closePath();
         
-        // Handle holes
-        shape.holes.forEach(hole => {
-          const offsetHole = new THREE.Shape();
-          const holePoints = hole.getPoints(32);  // Reduced from 96 to 32
+        // Handle holes - scale them inward
+        bgShape.holes = shape.holes.map(hole => {
+          const holeShape = new THREE.Shape();
+          const holePoints = hole.getPoints(32);
+          const holeCenter = new THREE.Vector2();
+          holePoints.forEach(p => holeCenter.add(p));
+          holeCenter.divideScalar(holePoints.length);
           
-          holePoints.forEach((point, i) => {
-            const prev = holePoints[(i - 1 + holePoints.length) % holePoints.length];
-            const next = holePoints[(i + 1) % holePoints.length];
-            
-            const v1 = new THREE.Vector2().subVectors(point, prev).normalize();
-            const v2 = new THREE.Vector2().subVectors(next, point).normalize();
-            const normal = new THREE.Vector2(-(v1.y + v2.y), v1.x + v2.x).normalize();
-            
-            const offsetPoint = new THREE.Vector2(
-              point.x - normal.x * outlineOffset,
-              point.y - normal.y * outlineOffset
-            );
-            
-            if (i === 0) {
-              offsetHole.moveTo(offsetPoint.x, offsetPoint.y);
-            } else {
-              offsetHole.lineTo(offsetPoint.x, offsetPoint.y);
-            }
+          const scaledHolePoints = holePoints.map(p => {
+            const dir = new THREE.Vector2().subVectors(p, holeCenter).normalize();
+            return new THREE.Vector2().addVectors(p, dir.multiplyScalar(-0.75));
           });
           
-          offsetHole.closePath();
-          bgShape.holes.push(offsetHole);
+          scaledHolePoints.forEach((p, i) => {
+            if (i === 0) {
+              holeShape.moveTo(p.x, p.y);
+            } else {
+              holeShape.lineTo(p.x, p.y);
+            }
+          });
+          holeShape.closePath();
+          return holeShape;
         });
         
         return bgShape;
@@ -222,7 +265,7 @@ export function TextModel({ text, font, scale }: TextModelProps) {
       const backgroundGeometry = new THREE.ExtrudeGeometry(backgroundShapes, {
         depth: 2,
         bevelEnabled: false,
-        curveSegments: 16  // Reduced from 32 to 16
+        curveSegments: 16
       } as THREE.ExtrudeGeometryOptions);
       
       // Scale to target size (roughly 30mm x 60mm)
@@ -357,4 +400,21 @@ function groupShapesByPosition(shapes: { shape: THREE.Shape; area: number; isExt
   });
 
   return groups;
+}
+
+// Add this helper function at the bottom of the file
+function isPointInShape(shape: THREE.Shape, point: THREE.Vector2): boolean {
+  const points = shape.getPoints(32);
+  let inside = false;
+  
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const xi = points[i].x, yi = points[i].y;
+    const xj = points[j].x, yj = points[j].y;
+    
+    const intersect = ((yi > point.y) !== (yj > point.y))
+        && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  
+  return inside;
 }
