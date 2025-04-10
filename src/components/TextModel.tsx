@@ -219,19 +219,18 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
         curveSegments: 16
       } as THREE.ExtrudeGeometryOptions);
       
-      // Create background by creating offset curves
+      // Create background using parallel offset
       const backgroundShapes = mainShapes.map(shape => {
         const bgShape = new THREE.Shape();
-        const points = shape.getPoints(128); // Increased point count for smoother curves
+        const points = shape.getPoints(256); // Increased point count for smoother curves
         
         // Determine if this shape is for an uppercase or lowercase letter
         const isUpperCase = points.some(p => p.y < -font.descender * 0.75);
-        const outerOffset = isUpperCase ? uppercaseOuterOffset : lowercaseOuterOffset;
+        const outerRadius = isUpperCase ? uppercaseOuterOffset : lowercaseOuterOffset;
         
-        // Create offset curve for outer shape
-        const offsetPoints = createOffsetShape(points, outerOffset);
+        // Create offset using parallel offset method for outer shape
+        const offsetPoints = createParallelOffset(points, outerRadius, false);
         
-        // Create the background shape with the offset points
         offsetPoints.forEach((p, i) => {
           if (i === 0) {
             bgShape.moveTo(p.x, p.y);
@@ -240,14 +239,14 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
           }
         });
         
-        // Handle holes - create inward offset curves
+        // Handle holes using parallel offset
         bgShape.holes = shape.holes.map(hole => {
           const holeShape = new THREE.Shape();
-          const holePoints = hole.getPoints(128); // Increased point count for holes too
-          const innerOffset = isUpperCase ? uppercaseInnerOffset : lowercaseInnerOffset;
+          const holePoints = hole.getPoints(256);
+          const innerRadius = isUpperCase ? uppercaseInnerOffset : lowercaseInnerOffset;
           
-          // Create inward offset curve for hole
-          const offsetHolePoints = createOffsetShape(holePoints, -innerOffset);
+          // Create inward offset for hole
+          const offsetHolePoints = createParallelOffset(holePoints, innerRadius, true);
           
           offsetHolePoints.forEach((p, i) => {
             if (i === 0) {
@@ -265,8 +264,30 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
       const backgroundGeometry = new THREE.ExtrudeGeometry(backgroundShapes, {
         depth: backgroundDepth,
         bevelEnabled: false,
-        curveSegments: 16
+        curveSegments: 64, // Increased for even smoother curves
+        steps: 2, // Increased to ensure proper extrusion
+        UVGenerator: {
+          generateTopUV: function(geometry, vertices, indexA, indexB, indexC) {
+            return [
+              new THREE.Vector2(0, 0),
+              new THREE.Vector2(0, 1),
+              new THREE.Vector2(1, 1)
+            ];
+          },
+          generateSideWallUV: function(geometry, vertices, indexA, indexB, indexC, indexD) {
+            return [
+              new THREE.Vector2(0, 0),
+              new THREE.Vector2(1, 0),
+              new THREE.Vector2(0, 1),
+              new THREE.Vector2(1, 1)
+            ];
+          }
+        }
       } as THREE.ExtrudeGeometryOptions);
+      
+      // Ensure proper face normals
+      backgroundGeometry.computeVertexNormals();
+      backgroundGeometry.computeBoundingSphere();
       
       // Scale to target size (roughly 30mm x 60mm)
       const targetWidth = 60; // mm
@@ -428,64 +449,227 @@ function isPointInShape(shape: THREE.Shape, point: THREE.Vector2): boolean {
   return inside;
 }
 
-// Add these helper functions before the TextModel component
-function offsetPoint(p1: THREE.Vector2, p2: THREE.Vector2, offset: number): THREE.Vector2 {
-  const dx = p2.x - p1.x;
-  const dy = p2.y - p1.y;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  if (length === 0) return new THREE.Vector2(p1.x, p1.y);
+// Helper function to calculate rolling ball offset
+function createParallelOffset(points: THREE.Vector2[], offset: number, isHole: boolean = false): THREE.Vector2[] {
+  // For holes, we need to reverse both points and offset direction
+  const workingPoints = isHole ? [...points].reverse() : points;
+  const radius = isHole ? -Math.abs(offset) : Math.abs(offset);
   
-  // Calculate normal vector
-  const nx = -dy / length;
-  const ny = dx / length;
-  
-  return new THREE.Vector2(
-    p1.x + nx * offset,
-    p1.y + ny * offset
-  );
-}
-
-function createOffsetShape(points: THREE.Vector2[], offset: number): THREE.Vector2[] {
-  const offsetPoints: THREE.Vector2[] = [];
-  const len = points.length;
-  
-  // First pass: generate simple offset points
-  const rawOffsetPoints: THREE.Vector2[] = [];
-  for (let i = 0; i < len - 1; i++) {
-    const curr = points[i];
-    const next = points[i + 1];
-    rawOffsetPoints.push(offsetPoint(curr, next, offset));
+  // Ensure the shape is closed
+  if (!workingPoints[workingPoints.length - 1].equals(workingPoints[0])) {
+    workingPoints.push(workingPoints[0].clone());
   }
   
-  // Second pass: handle corners
-  for (let i = 0; i < len - 1; i++) {
-    const prev = rawOffsetPoints[(i - 1 + len - 1) % (len - 1)];
-    const curr = rawOffsetPoints[i];
-    const next = rawOffsetPoints[(i + 1) % (len - 1)];
+  // Calculate segment vectors and normals
+  const segments: Array<{
+    start: THREE.Vector2;
+    end: THREE.Vector2;
+    dir: THREE.Vector2;
+    normal: THREE.Vector2;
+  }> = [];
+  
+  for (let i = 0; i < workingPoints.length - 1; i++) {
+    const start = workingPoints[i];
+    const end = workingPoints[i + 1];
+    const dir = new THREE.Vector2().subVectors(end, start).normalize();
+    const normal = new THREE.Vector2(-dir.y, dir.x);
+    segments.push({ start, end, dir, normal });
+  }
+  
+  // Create the offset path by following the ball's outer envelope
+  const offsetPoints: THREE.Vector2[] = [];
+  
+  for (let i = 0; i < segments.length - 1; i++) {
+    const curr = segments[i];
+    const next = segments[i + 1];
     
-    // Add the current point
-    offsetPoints.push(curr);
+    // Calculate angle between segments
+    const angle = Math.acos(Math.min(1, Math.max(-1, curr.dir.dot(next.dir))));
+    const cross = curr.dir.x * next.dir.y - curr.dir.y * next.dir.x;
+    const clockwise = cross < 0; // Simplified: always use cross product sign
     
-    // If angle between segments is sharp, add extra points to smooth the corner
-    const v1 = new THREE.Vector2().subVectors(curr, prev);
-    const v2 = new THREE.Vector2().subVectors(next, curr);
-    const angle = v1.angle() - v2.angle();
+    // Add offset point at start of segment
+    const startOffset = curr.normal.clone().multiplyScalar(radius);
+    offsetPoints.push(new THREE.Vector2().addVectors(curr.start, startOffset));
     
-    if (Math.abs(angle) > Math.PI / 6) { // If angle is greater than 30 degrees
-      const steps = Math.ceil(Math.abs(angle) / (Math.PI / 12)); // One point every 15 degrees
-      for (let j = 1; j < steps; j++) {
-        const t = j / steps;
-        const interpAngle = v1.angle() * (1 - t) + v2.angle() * t;
+    // If there's a significant angle between segments, add circular arc
+    if (angle > 0.01) {
+      const center = curr.end.clone();
+      const numSteps = Math.max(1, Math.ceil(angle * 16)); // More points for sharper angles
+      
+      // Calculate start and end angles for the arc
+      const startAngle = Math.atan2(curr.normal.y, curr.normal.x);
+      let endAngle = Math.atan2(next.normal.y, next.normal.x);
+      
+      // Ensure we take the shorter path around the circle
+      if (clockwise) {
+        if (endAngle > startAngle) endAngle -= 2 * Math.PI;
+      } else {
+        if (endAngle < startAngle) endAngle += 2 * Math.PI;
+      }
+      
+      // Add points along the arc
+      for (let j = 1; j <= numSteps; j++) {
+        const t = j / numSteps;
+        const angle = startAngle * (1 - t) + endAngle * t;
         offsetPoints.push(new THREE.Vector2(
-          curr.x + Math.cos(interpAngle) * offset,
-          curr.y + Math.sin(interpAngle) * offset
+          center.x + radius * Math.cos(angle),
+          center.y + radius * Math.sin(angle)
         ));
       }
     }
   }
   
-  // Close the shape
-  offsetPoints.push(offsetPoints[0]);
+  // Add final offset point
+  const lastSegment = segments[segments.length - 1];
+  const finalOffset = lastSegment.normal.clone().multiplyScalar(radius);
+  offsetPoints.push(new THREE.Vector2().addVectors(lastSegment.end, finalOffset));
   
-  return offsetPoints;
+  // Close the shape if needed
+  if (!offsetPoints[0].equals(offsetPoints[offsetPoints.length - 1])) {
+    offsetPoints.push(offsetPoints[0].clone());
+  }
+  
+  // Smooth the path to remove any sharp corners
+  const smoothedPoints: THREE.Vector2[] = [];
+  const smoothingWindow = 2;
+  
+  for (let i = 0; i < offsetPoints.length; i++) {
+    const windowPoints: THREE.Vector2[] = [];
+    for (let j = -smoothingWindow; j <= smoothingWindow; j++) {
+      const idx = (i + j + offsetPoints.length) % offsetPoints.length;
+      windowPoints.push(offsetPoints[idx]);
+    }
+    
+    const smoothed = new THREE.Vector2();
+    windowPoints.forEach(p => smoothed.add(p));
+    smoothed.divideScalar(windowPoints.length);
+    smoothedPoints.push(smoothed);
+  }
+  
+  // Ensure the smoothed path is closed
+  if (!smoothedPoints[0].equals(smoothedPoints[smoothedPoints.length - 1])) {
+    smoothedPoints.push(smoothedPoints[0].clone());
+  }
+  
+  return smoothedPoints;
+}
+
+// Helper function to create a proper outline from a cloud of points
+function createOutlineFromPoints(points: THREE.Vector2[], radius: number): THREE.Vector2[] {
+  // First, find the leftmost point as our starting point
+  let startIdx = 0;
+  let leftmost = points[0].x;
+  for (let i = 1; i < points.length; i++) {
+    if (points[i].x < leftmost) {
+      leftmost = points[i].x;
+      startIdx = i;
+    }
+  }
+
+  // Initialize outline with the leftmost point
+  const outline: THREE.Vector2[] = [points[startIdx].clone()];
+  const used = new Set<number>([startIdx]);
+  let current = points[startIdx];
+  let currentAngle = Math.PI; // Start looking right
+
+  // Keep finding next points until we get back to start
+  while (outline.length < 2 || !outline[0].equals(outline[outline.length - 1])) {
+    let bestIdx = -1;
+    let bestAngle = Infinity;
+    let minAngleDiff = Infinity;
+
+    // Look for the next point in a counterclockwise sweep
+    for (let i = 0; i < points.length; i++) {
+      if (used.has(i)) continue;
+
+      const point = points[i];
+      const dist = current.distanceTo(point);
+      
+      // Only consider points within reasonable distance
+      if (dist > radius * 2) continue;
+
+      // Calculate angle to this point
+      const angle = Math.atan2(point.y - current.y, point.x - current.x);
+      let angleDiff = angle - currentAngle;
+      
+      // Normalize angle difference to [-PI, PI]
+      while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+      while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+      // We want the smallest positive angle difference
+      if (angleDiff > -Math.PI/4 && angleDiff < minAngleDiff) {
+        minAngleDiff = angleDiff;
+        bestAngle = angle;
+        bestIdx = i;
+      }
+    }
+
+    // If we can't find a next point, try to close the shape
+    if (bestIdx === -1) {
+      if (outline.length > 2 && current.distanceTo(outline[0]) < radius * 0.5) {
+        outline.push(outline[0].clone());
+        break;
+      } else {
+        // If we can't close the shape, something went wrong
+        // Try to find any unused point that's close enough
+        let nearestUnused = -1;
+        let minDist = radius * 2;
+        for (let i = 0; i < points.length; i++) {
+          if (!used.has(i)) {
+            const dist = current.distanceTo(points[i]);
+            if (dist < minDist) {
+              minDist = dist;
+              nearestUnused = i;
+            }
+          }
+        }
+        if (nearestUnused === -1) break; // No more points to add
+        bestIdx = nearestUnused;
+        bestAngle = Math.atan2(
+          points[bestIdx].y - current.y,
+          points[bestIdx].x - current.x
+        );
+      }
+    }
+
+    // Add the best point to our outline
+    current = points[bestIdx].clone();
+    outline.push(current);
+    used.add(bestIdx);
+    currentAngle = bestAngle;
+  }
+
+  // Ensure the shape is closed
+  if (outline.length > 0 && !outline[0].equals(outline[outline.length - 1])) {
+    outline.push(outline[0].clone());
+  }
+
+  // Smooth the outline by averaging nearby points
+  const smoothedOutline: THREE.Vector2[] = [];
+  const smoothingRadius = radius * 0.25;
+  
+  for (let i = 0; i < outline.length; i++) {
+    const point = outline[i];
+    const nearbyPoints: THREE.Vector2[] = [];
+    
+    // Find nearby points
+    for (let j = Math.max(0, i - 2); j <= Math.min(outline.length - 1, i + 2); j++) {
+      if (point.distanceTo(outline[j]) < smoothingRadius) {
+        nearbyPoints.push(outline[j]);
+      }
+    }
+    
+    // Average the positions
+    if (nearbyPoints.length > 0) {
+      const avg = new THREE.Vector2();
+      nearbyPoints.forEach(p => avg.add(p));
+      avg.divideScalar(nearbyPoints.length);
+      smoothedOutline.push(avg);
+    } else {
+      smoothedOutline.push(point.clone());
+    }
+  }
+
+  return smoothedOutline;
 }
