@@ -233,7 +233,7 @@ function App() {
             <input
               type="number"
               min="0.5"
-              step="0.1"
+              step="0.05"
               value={scale}
               onChange={(e) => setScale(Number(e.target.value))}
               className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -312,7 +312,8 @@ function App() {
                     </label>
                     <input
                       type="number"
-                      step="0.1"
+                      step="1"
+                      min="-1000"
                       value={segment.xOffset}
                       onChange={(e) => updateSegment(index, { xOffset: Number(e.target.value) })}
                       className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"
@@ -325,7 +326,8 @@ function App() {
                     </label>
                     <input
                       type="number"
-                      step="0.1"
+                      step="1"
+                      min="-1000"
                       value={segment.yOffset}
                       onChange={(e) => updateSegment(index, { yOffset: Number(e.target.value) })}
                       className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-indigo-500 focus:border-indigo-500"

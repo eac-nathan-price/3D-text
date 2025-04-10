@@ -175,20 +175,15 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
         curveSegments: 16 // Reduced from 32 to 16
       } as THREE.ExtrudeGeometryOptions);
       
-      // Scale and position the geometries
-      const targetWidth = 60; // Target width in world units (60mm)
-      const boundingBox = new THREE.Box3().setFromObject(new THREE.Mesh(textGeometry));
-      const currentWidth = boundingBox.max.x - boundingBox.min.x;
-      const scaleFactor = (targetWidth / currentWidth) * scale;
-      
+      // Apply scale and position the geometries
       [textGeometry, backgroundGeometry].forEach(geo => {
-        geo.scale(scaleFactor, scaleFactor, 1);
+        geo.scale(scale, scale, 1);
         
         // Center the geometry and apply offsets
         geo.computeBoundingBox();
         const center = new THREE.Vector3();
         geo.boundingBox!.getCenter(center);
-        geo.translate(-center.x + xOffset * scaleFactor, -center.y + yOffset * scaleFactor, 0);
+        geo.translate(-center.x + xOffset, -center.y + yOffset, 0);
       });
       
       // Calculate dimensions in mm
