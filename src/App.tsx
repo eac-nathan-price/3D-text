@@ -178,7 +178,6 @@ function App() {
                   <input
                     type="number"
                     min="0.1"
-                    max="2"
                     step="0.05"
                     value={uppercaseOuterOffset}
                     onChange={(e) => setUppercaseOuterOffset(Number(e.target.value))}
@@ -193,7 +192,6 @@ function App() {
                   <input
                     type="number"
                     min="0.1"
-                    max="2"
                     step="0.05"
                     value={uppercaseInnerOffset}
                     onChange={(e) => setUppercaseInnerOffset(Number(e.target.value))}
@@ -208,7 +206,6 @@ function App() {
                   <input
                     type="number"
                     min="0.1"
-                    max="2"
                     step="0.05"
                     value={lowercaseOuterOffset}
                     onChange={(e) => setLowercaseOuterOffset(Number(e.target.value))}
@@ -223,7 +220,6 @@ function App() {
                   <input
                     type="number"
                     min="0.1"
-                    max="2"
                     step="0.05"
                     value={lowercaseInnerOffset}
                     onChange={(e) => setLowercaseInnerOffset(Number(e.target.value))}

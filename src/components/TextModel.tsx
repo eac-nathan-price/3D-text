@@ -225,7 +225,21 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
         const points = shape.getPoints(256); // Increased point count for smoother curves
         
         // Determine if this shape is for an uppercase or lowercase letter
-        const isUpperCase = points.some(p => p.y < -font.descender * 0.75);
+        // Calculate the vertical extent of the shape
+        let minY = Infinity;
+        let maxY = -Infinity;
+        points.forEach(p => {
+          minY = Math.min(minY, p.y);
+          maxY = Math.max(maxY, p.y);
+        });
+        
+        // A shape is considered uppercase if it extends significantly above x-height
+        // and takes up most of the vertical space between baseline and ascender
+        const shapeHeight = maxY - minY;
+        const totalHeight = font.ascender - font.descender;
+        const xHeight = font.tables.os2.sxHeight / font.unitsPerEm * 72; // Convert to font units
+        
+        const isUpperCase = maxY > xHeight * 0.8 && shapeHeight > totalHeight * 0.7;
         const outerRadius = isUpperCase ? uppercaseOuterOffset : lowercaseOuterOffset;
         
         // Create offset using parallel offset method for outer shape
