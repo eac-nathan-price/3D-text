@@ -8,14 +8,14 @@ interface TextModelProps {
   scale: number;
   foregroundDepth: number;
   backgroundDepth: number;
-  uppercaseOuterOffset: number;
-  uppercaseInnerOffset: number;
-  lowercaseOuterOffset: number;
-  lowercaseInnerOffset: number;
+  outerOffset: number;
+  innerOffset: number;
+  xOffset: number;
+  yOffset: number;
   onDimensionsChange?: (dimensions: { width: number; height: number; depth: number }) => void;
 }
 
-export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth, uppercaseOuterOffset, uppercaseInnerOffset, lowercaseOuterOffset, lowercaseInnerOffset, onDimensionsChange }: TextModelProps) {
+export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth, outerOffset, innerOffset, xOffset, yOffset, onDimensionsChange }: TextModelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [referenceTexture, setReferenceTexture] = useState<THREE.Texture | null>(null);
@@ -23,18 +23,16 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
   // Create reference texture
   useEffect(() => {
     const canvas = document.createElement('canvas');
-    // Make canvas dimensions match the target text size ratio
     canvas.width = 2048;
     canvas.height = 1024;
     const ctx = canvas.getContext('2d')!;
 
     // Clear canvas
-    ctx.fillStyle = 'white';
+    ctx.fillStyle = 'black';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     // Draw text
-    ctx.fillStyle = 'black';
-    // Start with a large font size
+    ctx.fillStyle = 'white';
     const fontSize = canvas.height * 0.8;
     ctx.font = `${fontSize}px ${font.names.fontFamily.en}`;
     ctx.textBaseline = 'middle';
@@ -55,142 +53,58 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
     setReferenceTexture(texture);
   }, [text, font]);
 
+  // Create geometries for the text
   const { foregroundGeometry, backgroundGeometry } = useMemo(() => {
     try {
-      setIsLoading(true);
-      setError(null);
+      // Create shapes from font paths
+      const shapes: THREE.Shape[] = [];
+      const fontScale = 72; // Convert font units to pixels
       
-      // Create path from text with proper centering
-      const fontSize = 72;
-      const textWidth = font.getAdvanceWidth(text, fontSize);
+      // Calculate text width for positioning
+      const textWidth = font.getAdvanceWidth(text, fontScale);
       const baseline = (font.ascender + font.descender) / 2;
-      const path = font.getPath(text, -textWidth / 2, baseline / 2, fontSize);
       
-      // First pass: collect all paths and determine their types
-      interface Point2D {
-        x: number;
-        y: number;
-      }
-      
-      let currentContour: Point2D[] = [];
-      let allContours: Point2D[][] = [];
-      
-      path.commands.forEach((cmd: any) => {
-        const y = -cmd.y; // Flip Y coordinates
-        
-        switch (cmd.type) {
-          case 'M':
-            if (currentContour.length > 0) {
-              allContours.push([...currentContour]);
-              currentContour = [];
-            }
-            currentContour.push({ x: cmd.x, y });
-            break;
-            
-          case 'L':
-            currentContour.push({ x: cmd.x, y });
-            break;
-            
-          case 'C':
-            // For cubic curves, we'll approximate with multiple line segments
-            const steps = 8;
-            for (let i = 1; i <= steps; i++) {
-              const t = i / steps;
-              const t2 = t * t;
-              const t3 = t2 * t;
-              const mt = 1 - t;
-              const mt2 = mt * mt;
-              const mt3 = mt2 * mt;
-              
-              const x = (mt3 * currentContour[currentContour.length - 1].x) +
-                       (3 * mt2 * t * cmd.x1) +
-                       (3 * mt * t2 * cmd.x2) +
-                       (t3 * cmd.x);
-                       
-              const y = (mt3 * currentContour[currentContour.length - 1].y) +
-                       (3 * mt2 * t * -cmd.y1) +
-                       (3 * mt * t2 * -cmd.y2) +
-                       (t3 * -cmd.y);
-                       
-              currentContour.push({ x, y });
-            }
-            break;
-            
-          case 'Q':
-            // For quadratic curves, we'll approximate with multiple line segments
-            const qSteps = 6;
-            for (let i = 1; i <= qSteps; i++) {
-              const t = i / qSteps;
-              const t2 = t * t;
-              const mt = 1 - t;
-              const mt2 = mt * mt;
-              
-              const x = (mt2 * currentContour[currentContour.length - 1].x) +
-                       (2 * mt * t * cmd.x1) +
-                       (t2 * cmd.x);
-                       
-              const y = (mt2 * currentContour[currentContour.length - 1].y) +
-                       (2 * mt * t * -cmd.y1) +
-                       (t2 * -cmd.y);
-                       
-              currentContour.push({ x, y });
-            }
-            break;
-            
-          case 'Z':
-            if (currentContour.length > 0) {
-              // Close the contour by connecting back to the first point
-              currentContour.push({ ...currentContour[0] });
-              allContours.push([...currentContour]);
-              currentContour = [];
-            }
-            break;
+      // Create path with proper positioning
+      const path = font.getPath(text, -textWidth / 2, baseline / 2, fontScale);
+      path.commands.forEach(cmd => {
+        if (cmd.type === 'M') {
+          shapes.push(new THREE.Shape());
+          shapes[shapes.length - 1].moveTo(cmd.x, -cmd.y);
+        } else if (cmd.type === 'L') {
+          shapes[shapes.length - 1].lineTo(cmd.x, -cmd.y);
+        } else if (cmd.type === 'Q') {
+          shapes[shapes.length - 1].quadraticCurveTo(cmd.x1, -cmd.y1, cmd.x, -cmd.y);
+        } else if (cmd.type === 'C') {
+          shapes[shapes.length - 1].bezierCurveTo(cmd.x1, -cmd.y1, cmd.x2, -cmd.y2, cmd.x, -cmd.y);
+        } else if (cmd.type === 'Z') {
+          shapes[shapes.length - 1].closePath();
         }
-      });
-      
-      // Add any remaining contour
-      if (currentContour.length > 0) {
-        currentContour.push({ ...currentContour[0] });
-        allContours.push([...currentContour]);
-      }
-      
-      // Create shapes from contours
-      const shapes = allContours.map(contour => {
-        const shape = new THREE.Shape();
-        contour.forEach((point, i) => {
-          if (i === 0) {
-            shape.moveTo(point.x, point.y);
-          } else {
-            shape.lineTo(point.x, point.y);
-          }
-        });
-        return shape;
       });
       
       // Sort shapes by area and identify holes
       const shapesWithArea = shapes.map(shape => {
         const area = calculateShapeArea(shape);
         const bbox = new THREE.Box2();
-        shape.getPoints(32).forEach(p => bbox.expandByPoint(p));
+        shape.getPoints(16).forEach(p => bbox.expandByPoint(p)); // Reduced from 32 to 16 points
         return {
           shape,
           area: Math.abs(area),
-          isHole: area > 0,  // In OpenType.js, positive area means it's a hole
+          isHole: area > 0,  // Positive area means it's a hole in OpenType.js
           bbox
         };
       }).sort((a, b) => b.area - a.area);
       
       // Group shapes by containment
       const mainShapes: THREE.Shape[] = [];
-      const remainingSholes = shapesWithArea.filter(s => s.isHole);
+      const remainingHoles = shapesWithArea.filter(s => s.isHole);
       
       shapesWithArea.filter(s => !s.isHole).forEach(mainShapeInfo => {
         const shape = mainShapeInfo.shape;
         const holes: THREE.Shape[] = [];
         
         // Find holes that are contained within this shape
-        for (let i = remainingSholes.length - 1; i >= 0; i--) {
-          const holeInfo = remainingSholes[i];
+        for (let i = remainingHoles.length - 1; i >= 0; i--) {
+          const holeInfo = remainingHoles[i];
           const holeBBox = holeInfo.bbox;
           const shapeBBox = mainShapeInfo.bbox;
           
@@ -203,7 +117,7 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
             const holePoint = holeInfo.shape.getPoints(1)[0];
             if (isPointInShape(shape, holePoint)) {
               holes.push(holeInfo.shape);
-              remainingSholes.splice(i, 1);
+              remainingHoles.splice(i, 1);
             }
           }
         }
@@ -216,34 +130,16 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
       const textGeometry = new THREE.ExtrudeGeometry(mainShapes, {
         depth: foregroundDepth,
         bevelEnabled: false,
-        curveSegments: 16
+        curveSegments: 16 // Reduced from 32 to 16
       } as THREE.ExtrudeGeometryOptions);
       
       // Create background using parallel offset
       const backgroundShapes = mainShapes.map(shape => {
         const bgShape = new THREE.Shape();
-        const points = shape.getPoints(256); // Increased point count for smoother curves
-        
-        // Determine if this shape is for an uppercase or lowercase letter
-        // Calculate the vertical extent of the shape
-        let minY = Infinity;
-        let maxY = -Infinity;
-        points.forEach(p => {
-          minY = Math.min(minY, p.y);
-          maxY = Math.max(maxY, p.y);
-        });
-        
-        // A shape is considered uppercase if it extends significantly above x-height
-        // and takes up most of the vertical space between baseline and ascender
-        const shapeHeight = maxY - minY;
-        const totalHeight = font.ascender - font.descender;
-        const xHeight = font.tables.os2.sxHeight / font.unitsPerEm * 72; // Convert to font units
-        
-        const isUpperCase = maxY > xHeight * 0.8 && shapeHeight > totalHeight * 0.7;
-        const outerRadius = isUpperCase ? uppercaseOuterOffset : lowercaseOuterOffset;
+        const points = shape.getPoints(128); // Reduced from 256 to 128
         
         // Create offset using parallel offset method for outer shape
-        const offsetPoints = createParallelOffset(points, outerRadius, false);
+        const offsetPoints = createParallelOffset(points, outerOffset, false);
         
         offsetPoints.forEach((p, i) => {
           if (i === 0) {
@@ -256,11 +152,8 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
         // Handle holes using parallel offset
         bgShape.holes = shape.holes.map(hole => {
           const holeShape = new THREE.Shape();
-          const holePoints = hole.getPoints(256);
-          const innerRadius = isUpperCase ? uppercaseInnerOffset : lowercaseInnerOffset;
-          
-          // Create inward offset for hole
-          const offsetHolePoints = createParallelOffset(holePoints, innerRadius, true);
+          const holePoints = hole.getPoints(128); // Reduced from 256 to 128
+          const offsetHolePoints = createParallelOffset(holePoints, innerOffset, true);
           
           offsetHolePoints.forEach((p, i) => {
             if (i === 0) {
@@ -269,6 +162,7 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
               holeShape.lineTo(p.x, p.y);
             }
           });
+          
           return holeShape;
         });
         
@@ -278,33 +172,11 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
       const backgroundGeometry = new THREE.ExtrudeGeometry(backgroundShapes, {
         depth: backgroundDepth,
         bevelEnabled: false,
-        curveSegments: 64, // Increased for even smoother curves
-        steps: 2, // Increased to ensure proper extrusion
-        UVGenerator: {
-          generateTopUV: function(geometry, vertices, indexA, indexB, indexC) {
-            return [
-              new THREE.Vector2(0, 0),
-              new THREE.Vector2(0, 1),
-              new THREE.Vector2(1, 1)
-            ];
-          },
-          generateSideWallUV: function(geometry, vertices, indexA, indexB, indexC, indexD) {
-            return [
-              new THREE.Vector2(0, 0),
-              new THREE.Vector2(1, 0),
-              new THREE.Vector2(0, 1),
-              new THREE.Vector2(1, 1)
-            ];
-          }
-        }
+        curveSegments: 16 // Reduced from 32 to 16
       } as THREE.ExtrudeGeometryOptions);
       
-      // Ensure proper face normals
-      backgroundGeometry.computeVertexNormals();
-      backgroundGeometry.computeBoundingSphere();
-      
-      // Scale to target size (roughly 30mm x 60mm)
-      const targetWidth = 60; // mm
+      // Scale and position the geometries
+      const targetWidth = 60; // Target width in world units (60mm)
       const boundingBox = new THREE.Box3().setFromObject(new THREE.Mesh(textGeometry));
       const currentWidth = boundingBox.max.x - boundingBox.min.x;
       const scaleFactor = (targetWidth / currentWidth) * scale;
@@ -312,11 +184,11 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
       [textGeometry, backgroundGeometry].forEach(geo => {
         geo.scale(scaleFactor, scaleFactor, 1);
         
-        // Center the geometry
+        // Center the geometry and apply offsets
         geo.computeBoundingBox();
         const center = new THREE.Vector3();
         geo.boundingBox!.getCenter(center);
-        geo.translate(-center.x, -center.y, 0);
+        geo.translate(-center.x + xOffset * scaleFactor, -center.y + yOffset * scaleFactor, 0);
       });
       
       // Calculate dimensions in mm
@@ -324,7 +196,7 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
       const dimensions = {
         width: (bbox.max.x - bbox.min.x),
         height: (bbox.max.y - bbox.min.y),
-        depth: foregroundDepth + backgroundDepth  // Total depth is sum of both depths
+        depth: foregroundDepth + backgroundDepth
       };
       onDimensionsChange?.(dimensions);
       
@@ -336,7 +208,7 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
       setIsLoading(false);
       return { foregroundGeometry: null, backgroundGeometry: null };
     }
-  }, [text, font, scale, foregroundDepth, backgroundDepth, uppercaseOuterOffset, uppercaseInnerOffset, lowercaseOuterOffset, lowercaseInnerOffset, onDimensionsChange]);
+  }, [text, font, scale, foregroundDepth, backgroundDepth, outerOffset, innerOffset, xOffset, yOffset, onDimensionsChange]);
   
   if (isLoading) {
     return (
@@ -349,7 +221,7 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
     );
   }
   
-  if (error) {
+  if (error || !foregroundGeometry || !backgroundGeometry || !referenceTexture) {
     return (
       <group>
         <mesh>
@@ -360,10 +232,6 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
     );
   }
   
-  if (!foregroundGeometry || !backgroundGeometry || !referenceTexture) {
-    return null;
-  }
-  
   // Calculate plane size to match geometry scale
   const bbox = new THREE.Box3().setFromObject(new THREE.Mesh(foregroundGeometry));
   const width = bbox.max.x - bbox.min.x;
@@ -372,30 +240,14 @@ export function TextModel({ text, font, scale, foregroundDepth, backgroundDepth,
   
   return (
     <group>
-      {/* Reference plane */}
-      <mesh position={[0, height + 5, 0]} rotation={[0, 0, 0]}>
-        <planeGeometry args={[width * 1.2, (width * 1.2) / aspectRatio]} />
-        <meshBasicMaterial map={referenceTexture} transparent opacity={0.8} side={THREE.DoubleSide} />
-      </mesh>
-      
-      {/* Background (black, extends in -z direction) */}
+      {/* Background */}
       <mesh geometry={backgroundGeometry} position={[0, 0, -backgroundDepth]}>
-        <meshStandardMaterial 
-          color="black" 
-          side={THREE.DoubleSide} 
-          roughness={0.5}
-          metalness={0.5}
-        />
+        <meshStandardMaterial color="#666" side={THREE.DoubleSide} />
       </mesh>
       
-      {/* Foreground (blue, extends in +z direction) */}
-      <mesh geometry={foregroundGeometry} position={[0, 0, 0]}>
-        <meshStandardMaterial 
-          color="#2196F3" 
-          side={THREE.DoubleSide} 
-          roughness={0.3}
-          metalness={0.7}
-        />
+      {/* Foreground */}
+      <mesh geometry={foregroundGeometry}>
+        <meshStandardMaterial color="#fff" side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
