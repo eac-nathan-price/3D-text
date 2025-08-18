@@ -23,7 +23,7 @@ export class ThreeMFExporter {
     this.scene.updateMatrixWorld(true);
 
     const meshes: THREE.Mesh[] = [];
-    this.scene.traverse((object) => {
+    this.scene.traverse((object: THREE.Object3D) => {
       if (object instanceof THREE.Mesh) {
         meshes.push(object);
       }
@@ -66,16 +66,18 @@ export class ThreeMFExporter {
     let materialIdCounter = 0;
     
     meshes.forEach((mesh) => {
-      if (!materialIds.has(mesh.material)) {
+      const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      if (!materialIds.has(material)) {
         const materialId = `material_${materialIdCounter++}`;
-        materialIds.set(mesh.material, materialId);
-        xml += this.generateMaterialXML(mesh.material, materialId);
+        materialIds.set(material, materialId);
+        xml += this.generateMaterialXML(material, materialId);
       }
     });
 
-    meshes.forEach((mesh, index) => {
-      const materialId = materialIds.get(mesh.material)!;
-      xml += this.generateObjectXML(mesh, index, materialId);
+    meshes.forEach((_mesh, index) => {
+      const material = Array.isArray(_mesh.material) ? _mesh.material[0] : _mesh.material;
+      const materialId = materialIds.get(material)!;
+      xml += this.generateObjectXML(_mesh, index, materialId);
     });
 
     xml += ' </resources>\n';
@@ -163,7 +165,7 @@ export class ThreeMFExporter {
   private generateBuildSection(meshes: THREE.Mesh[]): string {
     let xml = ' <build>\n';
     
-    meshes.forEach((mesh, index) => {
+    meshes.forEach((_mesh, index) => {
       xml += '  <item objectid="' + index + '" />\n';
     });
     

@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
-import { FontLoader } from 'three/examples/jsm/loaders/FontLoader';
-import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { ThreeMFExporter } from './ThreeMFExporter';
 
 const fonts = ['Federation_Regular.json']; // add more JSON fonts here
@@ -13,12 +13,12 @@ const App: React.FC = () => {
   const [text, setText] = useState('Hello World');
   const [selectedFont, setSelectedFont] = useState(fonts[0]);
 
-  const sceneRef = useRef<THREE.Scene>();
-  const cameraRef = useRef<THREE.PerspectiveCamera>();
-  const rendererRef = useRef<THREE.WebGLRenderer>();
-  const controlsRef = useRef<OrbitControls>();
-  const textMeshRef = useRef<THREE.Mesh>();
-  const pillMeshRef = useRef<THREE.Mesh>();
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const controlsRef = useRef<OrbitControls | null>(null);
+  const textMeshRef = useRef<THREE.Mesh | null>(null);
+  const pillMeshRef = useRef<THREE.Mesh | null>(null);
 
   // Initialize scene
   useEffect(() => {
@@ -73,16 +73,16 @@ const App: React.FC = () => {
     if (!sceneRef.current) return;
 
     const loader = new FontLoader();
-    loader.load(`/fonts/${selectedFont}`, (font) => {
+    loader.load(`/fonts/${selectedFont}`, (font: any) => {
       // Remove old meshes
-      if (textMeshRef.current) sceneRef.current.remove(textMeshRef.current);
-      if (pillMeshRef.current) sceneRef.current.remove(pillMeshRef.current);
+      if (textMeshRef.current && sceneRef.current) sceneRef.current.remove(textMeshRef.current);
+      if (pillMeshRef.current && sceneRef.current) sceneRef.current.remove(pillMeshRef.current);
 
       // Create text geometry
       const textGeo = new TextGeometry(text, {
         font,
         size: 30,
-        height: 10,
+        depth: 10,
         curveSegments: 12,
         bevelEnabled: false,
       });
@@ -92,7 +92,7 @@ const App: React.FC = () => {
       const textMat = new THREE.MeshPhongMaterial({ color: 0xffcc00 });
       const textMesh = new THREE.Mesh(textGeo, textMat);
       textMeshRef.current = textMesh;
-      sceneRef.current.add(textMesh);
+      if (sceneRef.current) sceneRef.current.add(textMesh);
 
       // Create pill background
       if (textGeo.boundingBox) {
@@ -129,7 +129,7 @@ const App: React.FC = () => {
         const pillMesh = new THREE.Mesh(pillGeo, pillMat);
         pillMesh.position.z = -6;
         pillMeshRef.current = pillMesh;
-        sceneRef.current.add(pillMesh);
+        if (sceneRef.current) sceneRef.current.add(pillMesh);
       }
     });
   }, [text, selectedFont]);
