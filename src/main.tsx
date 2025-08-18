@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry';
-import { ThreeMFExporter } from './3MFExporter';
+import { ThreeMFExporter } from './ThreeMFExporter';
 
 const fonts = ['Federation_Regular.json']; // add more JSON fonts here
 
@@ -134,20 +134,24 @@ const App: React.FC = () => {
     });
   }, [text, selectedFont]);
 
-  // Export scene meshes to 3MF
-  const export3MF = () => {
-    if (!textMeshRef.current || !pillMeshRef.current) return;
+  // Export scene to 3MF
+  const export3MF = async () => {
+    if (!sceneRef.current) return;
 
-    const exporter = new ThreeMFExporter();
-    const data = exporter.parse([textMeshRef.current, pillMeshRef.current]); // array of meshes
-    const blob = new Blob([data], { type: 'application/3mf' });
-    const url = URL.createObjectURL(blob);
+    try {
+      const exporter = new ThreeMFExporter(sceneRef.current);
+      const blob = await exporter.export();
+      const url = URL.createObjectURL(blob);
 
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'text_scene.3mf';
-    a.click();
-    URL.revokeObjectURL(url);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'text_scene.3mf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting 3MF:', error);
+      alert('Error exporting 3MF file. Check console for details.');
+    }
   };
 
   return (
