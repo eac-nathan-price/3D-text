@@ -89,7 +89,10 @@ const App: React.FC = () => {
       textGeo.computeBoundingBox();
       textGeo.center();
 
-      const textMat = new THREE.MeshPhongMaterial({ color: 0xffcc00 });
+      const textMat = new THREE.MeshPhongMaterial({ 
+        color: 0xffcc00,
+        name: 'TextMaterial'
+      });
       const textMesh = new THREE.Mesh(textGeo, textMat);
       textMeshRef.current = textMesh;
       if (sceneRef.current) sceneRef.current.add(textMesh);
@@ -125,7 +128,10 @@ const App: React.FC = () => {
           depth: 5,
           bevelEnabled: false,
         });
-        const pillMat = new THREE.MeshPhongMaterial({ color: 0x0077ff });
+        const pillMat = new THREE.MeshPhongMaterial({ 
+          color: 0x0077ff,
+          name: 'BackgroundMaterial'
+        });
         const pillMesh = new THREE.Mesh(pillGeo, pillMat);
         pillMesh.position.z = -6;
         pillMeshRef.current = pillMesh;

@@ -33,6 +33,19 @@ export class ThreeMFExporter {
       throw new Error('No meshes found in scene');
     }
 
+    // Debug: Log materials found
+    console.log('Found meshes:', meshes.length);
+    meshes.forEach((mesh, index) => {
+      const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+      let color = 'N/A';
+      if (material instanceof THREE.MeshBasicMaterial || 
+          material instanceof THREE.MeshPhongMaterial || 
+          material instanceof THREE.MeshStandardMaterial) {
+        color = material.color ? '#' + material.color.getHexString() : 'N/A';
+      }
+      console.log(`Mesh ${index}:`, mesh.name, 'Material:', material.name, 'Color:', color);
+    });
+
     const modelContent = this.generateModelXML(meshes);
     const relsContent = this.generateRelsXML();
     const contentTypesContent = this.generateContentTypesXML();
@@ -62,13 +75,13 @@ export class ThreeMFExporter {
   private generateResourcesSection(meshes: THREE.Mesh[]): string {
     let xml = ' <resources>\n';
     
-    const materialIds = new Map<THREE.Material, string>();
+    const materialIds = new Map<THREE.Material, number>();
     let materialIdCounter = 0;
     
     meshes.forEach((mesh) => {
       const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
       if (!materialIds.has(material)) {
-        const materialId = `material_${materialIdCounter++}`;
+        const materialId = materialIdCounter++;
         materialIds.set(material, materialId);
         xml += this.generateMaterialXML(material, materialId);
       }
@@ -84,7 +97,7 @@ export class ThreeMFExporter {
     return xml;
   }
 
-  private generateMaterialXML(material: THREE.Material, materialId: string): string {
+  private generateMaterialXML(material: THREE.Material, materialId: number): string {
     let xml = '  <basematerials id="' + materialId + '">\n';
     
     let color = '#FFFFFF';
@@ -103,7 +116,7 @@ export class ThreeMFExporter {
     return xml;
   }
 
-  private generateObjectXML(mesh: THREE.Mesh, objectId: number, materialId: string): string {
+  private generateObjectXML(mesh: THREE.Mesh, objectId: number, materialId: number): string {
     let xml = '  <object id="' + objectId + '" name="' + (mesh.name || 'Object_' + objectId) + '" type="model">\n';
     xml += '   <mesh>\n';
     
@@ -137,7 +150,7 @@ export class ThreeMFExporter {
     return xml;
   }
 
-  private generateTrianglesXML(geometry: THREE.BufferGeometry, materialId: string): string {
+  private generateTrianglesXML(geometry: THREE.BufferGeometry, materialId: number): string {
     let xml = '    <triangles>\n';
     
     if (geometry.index) {
