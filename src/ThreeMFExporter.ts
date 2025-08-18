@@ -192,7 +192,7 @@ export class ThreeMFExporter {
     if (this.options.upAxis === 'Y_UP') {
       return { x, y, z };
     } else if (this.options.upAxis === 'Z_UP') {
-      return { x, z, -y };
+      return { x, z, y: -y };
     } else if (this.options.upAxis === 'X_UP') {
       return { y, z, x };
     } else {
