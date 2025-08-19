@@ -15,6 +15,7 @@ export interface AddOn {
 export interface BackgroundConfig {
   thickness: number;
   shape: "pill" | "rectangle" | "circle";
+  padding: number;
 }
 
 export interface TextConfig {
@@ -38,7 +39,8 @@ export const products: Product[] = [
     maxSize: [76.2, 25.4],
     background: {
       thickness: 2,
-      shape: "pill"
+      shape: "pill",
+      padding: 2
     },
     text: {
       thickness: 1,
@@ -49,7 +51,7 @@ export const products: Product[] = [
         type: "hole",
         position: "left",
         diameter: 3,
-        padding: 5
+        padding: 1
       }
     ]
   }

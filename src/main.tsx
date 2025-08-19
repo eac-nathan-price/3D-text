@@ -76,6 +76,12 @@ const App: React.FC = () => {
     if (tngTheme) {
       applyTheme(tngTheme);
     }
+    
+    // Initialize with Keychain product
+    const keychainProduct = products.find(p => p.name === "Keychain");
+    if (keychainProduct) {
+      applyProduct(keychainProduct);
+    }
   }, []);
 
   // Initialize scene
@@ -174,10 +180,15 @@ const App: React.FC = () => {
         const textThickness = selectedProduct.text.thickness;
         const overlap = selectedProduct.text.overlap;
         
-        // Text starts at (background thickness - overlap) and extends to (background thickness + text thickness - overlap)
+        // Text should start at (background thickness - overlap) and extend to (background thickness + text thickness - overlap)
+        // For keychain: background is 2mm thick, text is 1mm thick with 0.05mm overlap
+        // Text should go from z=1.95mm to z=2.95mm (centered at z=2.45mm)
         const textStartZ = backgroundThickness - overlap;
         const textCenterZ = textStartZ + (textThickness / 2);
         textMesh.position.z = textCenterZ;
+        
+        console.log(`Text positioning: background thickness=${backgroundThickness}mm, text thickness=${textThickness}mm, overlap=${overlap}mm`);
+        console.log(`Text Z range: ${textStartZ.toFixed(3)}mm to ${(textStartZ + textThickness).toFixed(3)}mm, center at ${textCenterZ.toFixed(3)}mm`);
       } else {
         // Fallback positioning for when no product is selected
         textMesh.position.z = 5 + (5 / 2); // Pill top (5) + half text depth (2.5) = 7.5
@@ -217,83 +228,85 @@ const App: React.FC = () => {
           console.log(`Scaled size: ${(currentWidth * scaleFactor).toFixed(1)} x ${(currentHeight * scaleFactor).toFixed(1)}mm`);
         }
 
-      // Create pill background
-      if (textGeo.boundingBox) {
-        const { min, max } = textGeo.boundingBox;
-        const padding = 10;
-        
-        // Add extra left padding for hole if product has left hole add-on
-        let leftPadding = padding;
-        let rightPadding = padding;
-        if (selectedProduct) {
-          const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
-          if (leftHole) {
-            leftPadding = padding + leftHole.padding; // Extra padding for hole
-          }
-        }
-        
-        const width = max.x - min.x + leftPadding + rightPadding;
-        const height = max.y - min.y + padding * 2;
-        const radius = height / 2;
-
-        const shape = new THREE.Shape();
-        const x = -width / 2;
-        const y = -height / 2;
-
-        shape.moveTo(x + radius, y);
-        shape.lineTo(x + width - radius, y);
-        shape.quadraticCurveTo(x + width, y, x + width, y + radius);
-        shape.lineTo(x + width, y + height - radius);
-        shape.quadraticCurveTo(
-          x + width,
-          y + height,
-          x + width - radius,
-          y + height
-        );
-        shape.lineTo(x + radius, y + height);
-        shape.quadraticCurveTo(x, y + height, x, y + height - radius);
-        shape.lineTo(x, y + radius);
-        shape.quadraticCurveTo(x, y, x + radius, y);
-
-        const pillGeo = new THREE.ExtrudeGeometry(shape, {
-          depth: selectedProduct ? selectedProduct.background.thickness : 5, // Use product thickness or default
-          bevelEnabled: false,
-        });
-        
-        // Ensure the pill geometry is properly formed for 3D printing
-        // This helps prevent non-manifold edges
-        pillGeo.computeVertexNormals();
-        pillGeo.computeBoundingBox();
-        pillGeo.computeBoundingSphere();
-
-        // Create background material with color override (can be customized by user)
-        // The 3MF exporter will use whatever color is currently set on this material
-        const pillMat = new THREE.MeshPhongMaterial({ 
-          color: backgroundColor, // Use color override or theme color
-          name: 'BackgroundMaterial'
-        });
-        // Ensure the material name is set for proper identification in the exporter
-        pillMat.name = 'BackgroundMaterial';
-        const pillMesh = new THREE.Mesh(pillGeo, pillMat);
-        
-        // Position pill to center it around the text, accounting for left padding
-        if (selectedProduct) {
-          // Pill sits at z=0 (build plate level) with specified thickness
-          pillMesh.position.z = selectedProduct.background.thickness / 2;
+        // Create pill background
+        if (textGeo.boundingBox) {
+          const { min, max } = textGeo.boundingBox;
+          const basePadding = selectedProduct ? selectedProduct.background.padding : 10;
           
-          // Adjust X position to account for left padding (move right to center text)
-          const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
-          if (leftHole) {
-            const leftPadding = leftHole.padding;
-            pillMesh.position.x = leftPadding / 2; // Move right by half the extra padding
+          // Calculate padding for hole if product has left hole add-on
+          let leftPadding = basePadding;
+          let rightPadding = basePadding;
+          if (selectedProduct) {
+            const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
+            if (leftHole) {
+              // Hole is 3mm diameter with 1mm padding on all sides = 5mm total width
+              // We need the background to extend 5mm to the left of the text
+              leftPadding = basePadding + leftHole.padding; // basePadding + 1mm = 3mm total left padding
+            }
           }
-        } else {
-          // Fallback positioning for when no product is selected
-          pillMesh.position.z = 0;
+          
+          const width = max.x - min.x + leftPadding + rightPadding;
+          const height = max.y - min.y + basePadding * 2;
+          const radius = height / 2;
+
+          const shape = new THREE.Shape();
+          const x = -width / 2;
+          const y = -height / 2;
+
+          shape.moveTo(x + radius, y);
+          shape.lineTo(x + width - radius, y);
+          shape.quadraticCurveTo(x + width, y, x + width, y + radius);
+          shape.lineTo(x + width, y + height - radius);
+          shape.quadraticCurveTo(
+            x + width,
+            y + height,
+            x + width - radius,
+            y + height
+          );
+          shape.lineTo(x + radius, y + height);
+          shape.quadraticCurveTo(x, y + height, x, y + height - radius);
+          shape.lineTo(x, y + radius);
+          shape.quadraticCurveTo(x, y, x + radius, y);
+
+          const pillGeo = new THREE.ExtrudeGeometry(shape, {
+            depth: selectedProduct ? selectedProduct.background.thickness : 5, // Use product thickness or default
+            bevelEnabled: false,
+          });
+          
+          // Ensure the pill geometry is properly formed for 3D printing
+          // This helps prevent non-manifold edges
+          pillGeo.computeVertexNormals();
+          pillGeo.computeBoundingBox();
+          pillGeo.computeBoundingSphere();
+
+          // Create background material with color override (can be customized by user)
+          // The 3MF exporter will use whatever color is currently set on this material
+          const pillMat = new THREE.MeshPhongMaterial({ 
+            color: backgroundColor, // Use color override or theme color
+            name: 'BackgroundMaterial'
+          });
+          // Ensure the material name is set for proper identification in the exporter
+          pillMat.name = 'BackgroundMaterial';
+          const pillMesh = new THREE.Mesh(pillGeo, pillMat);
+          
+          // Position pill to center it around the text, accounting for left padding
+          if (selectedProduct) {
+            // Pill sits at z=0 (build plate level) with specified thickness
+            pillMesh.position.z = selectedProduct.background.thickness / 2;
+            
+            // Adjust X position to account for left padding (move right to center text)
+            const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
+            if (leftHole) {
+              const leftPadding = leftHole.padding;
+              pillMesh.position.x = leftPadding / 2; // Move right by half the extra padding
+            }
+          } else {
+            // Fallback positioning for when no product is selected
+            pillMesh.position.z = 0;
+          }
+          pillMeshRef.current = pillMesh;
+          if (sceneRef.current) sceneRef.current.add(pillMesh);
         }
-        pillMeshRef.current = pillMesh;
-        if (sceneRef.current) sceneRef.current.add(pillMesh);
-      }
     });
   }, [text, selectedFont, textColor, backgroundColor, selectedProduct]);
 
@@ -372,7 +385,6 @@ const App: React.FC = () => {
             }}
             style={{ minWidth: '150px' }}
           >
-            <option value="">Select a product...</option>
             {products.map((product) => (
               <option key={product.name} value={product.name}>
                 {product.name}
