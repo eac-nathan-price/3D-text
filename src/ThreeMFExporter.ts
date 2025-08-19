@@ -10,6 +10,16 @@ export class ThreeMFExporter {
   private scene: THREE.Scene;
   private options: ExportOptions;
 
+  /**
+   * Creates a new ThreeMFExporter instance.
+   * 
+   * The exporter automatically extracts colors from the current materials in the scene.
+   * This means it will use whatever colors are currently applied to objects, whether they
+   * come from presets or have been customized by the user.
+   * 
+   * @param scene - The Three.js scene to export
+   * @param options - Export options for coordinate system and units
+   */
   constructor(scene: THREE.Scene, options: Partial<ExportOptions> = {}) {
     this.scene = scene;
     this.options = {
@@ -33,7 +43,8 @@ export class ThreeMFExporter {
       throw new Error('No meshes found in scene');
     }
 
-    // Debug: Log materials found
+    // Debug: Log materials found with their current colors
+    // This shows the actual colors that will be used in the 3MF export
     console.log('Found meshes:', meshes.length);
     meshes.forEach((mesh, index) => {
       const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
@@ -43,7 +54,7 @@ export class ThreeMFExporter {
           material instanceof THREE.MeshStandardMaterial) {
         color = material.color ? '#' + material.color.getHexString() : 'N/A';
       }
-      console.log(`Mesh ${index}:`, mesh.name, 'Material:', material.name, 'Color:', color);
+      console.log(`Mesh ${index}:`, mesh.name, 'Material:', material.name, 'Current Color:', color);
     });
 
     // Generate Bambu Studio compatible 3MF structure
@@ -234,12 +245,15 @@ export class ThreeMFExporter {
     json += '    ],\n';
     json += '    "filament_colour": [\n';
     
-    // Add colors for each material
+    // Extract current colors from each mesh's material in the scene
+    // This ensures the 3MF uses the actual colors visible in the Three.js scene
+    // rather than any preset or default values
     for (let i = 0; i < materialCount; i++) {
       const meshMaterial = meshes[i].material;
       const material = Array.isArray(meshMaterial) ? meshMaterial[0] : meshMaterial;
-      let color = '#FFCC00'; // Default color
+      let color = '#FFCC00'; // Default fallback color
       
+      // Always use the current color from the material in the scene
       if (material instanceof THREE.MeshBasicMaterial || 
           material instanceof THREE.MeshPhongMaterial || 
           material instanceof THREE.MeshStandardMaterial) {

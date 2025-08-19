@@ -8,6 +8,18 @@ import { ThreeMFExporter } from './ThreeMFExporter';
 import { presets } from './presets';
 import type { Preset } from './presets';
 
+/**
+ * 3D Text Scene with 3MF Export Capability
+ * 
+ * Color System:
+ * - Presets provide initial colors for text and background
+ * - Colors are applied to Three.js materials when presets are selected
+ * - The 3MF exporter automatically extracts colors from the current scene materials
+ * - This allows for future user customization features where colors can be modified
+ *   beyond what's defined in presets
+ * - All color changes in the scene will be reflected in the exported 3MF file
+ */
+
 const fonts = ['Federation_Regular.json']; // add more JSON fonts here
 
 const App: React.FC = () => {
@@ -35,6 +47,7 @@ const App: React.FC = () => {
   };
 
   // Apply preset when selected
+  // Note: Colors can be customized beyond presets - the 3MF exporter will use the current scene colors
   const applyPreset = (preset: Preset) => {
     setText(preset.text);
     setSelectedFont(preset.font);
@@ -110,10 +123,14 @@ const App: React.FC = () => {
       textGeo.computeBoundingBox();
       textGeo.center();
 
+      // Create text material with preset color (can be customized later)
+      // The 3MF exporter will use whatever color is currently set on this material
       const textMat = new THREE.MeshPhongMaterial({ 
         color: selectedPreset?.color || 0x0077ff, // Use preset color or default blue
         name: 'TextMaterial'
       });
+      // Ensure the material name is set for proper identification in the exporter
+      textMat.name = 'TextMaterial';
       const textMesh = new THREE.Mesh(textGeo, textMat);
       // Position text so it sits entirely above the background pill
       // Pill is at z=0 with depth 5, so its top surface is at z=5
@@ -154,10 +171,15 @@ const App: React.FC = () => {
           depth: 5, // Same depth as text for clean alignment
           bevelEnabled: false,
         });
+        
+        // Create background material with preset color (can be customized later)
+        // The 3MF exporter will use whatever color is currently set on this material
         const pillMat = new THREE.MeshPhongMaterial({ 
           color: selectedPreset?.background || 0x000000, // Use preset background or default black
           name: 'BackgroundMaterial'
         });
+        // Ensure the material name is set for proper identification in the exporter
+        pillMat.name = 'BackgroundMaterial';
         const pillMesh = new THREE.Mesh(pillGeo, pillMat);
         // Position pill at z=0 (build plate level) so text sits on top
         pillMesh.position.z = 0;
@@ -172,6 +194,20 @@ const App: React.FC = () => {
     if (!sceneRef.current) return;
 
     try {
+      // Log current colors in the scene for debugging
+      console.log('=== Current Scene Colors ===');
+      sceneRef.current.traverse((object) => {
+        if (object instanceof THREE.Mesh && object.material) {
+          const material = Array.isArray(object.material) ? object.material[0] : object.material;
+          if (material instanceof THREE.MeshPhongMaterial && material.color) {
+            console.log(`${object.name || 'Unnamed Mesh'}: #${material.color.getHexString().toUpperCase()}`);
+          }
+        }
+      });
+      console.log('===========================');
+
+      // The exporter will automatically use the current colors of all objects in the scene
+      // This includes any custom colors set by the user beyond the preset defaults
       const exporter = new ThreeMFExporter(sceneRef.current);
       const blob = await exporter.export();
       const url = URL.createObjectURL(blob);
