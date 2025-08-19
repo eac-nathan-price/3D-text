@@ -5,68 +5,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { ThreeMFExporter } from './ThreeMFExporter';
-
-// Preset system with grouped categories
-interface Preset {
-  name: string;
-  font: string;
-  color: number;
-  background: number;
-  text: string;
-}
-
-interface PresetGroup {
-  category: string;
-  presets: Preset[];
-}
-
-const presetGroups: PresetGroup[] = [
-  {
-    category: "Star Trek",
-    presets: [
-      {
-        name: "TNG Title",
-        font: "Federation_Regular.json",
-        color: 0x0077ff,
-        background: 0x000000,
-        text: "STAR TREK"
-      },
-      {
-        name: "TOS Title",
-        font: "Federation_Regular.json",
-        color: 0x0077ff,
-        background: 0x000000,
-        text: "STAR TREK"
-      },
-      {
-        name: "DS9 Title",
-        font: "Federation_Regular.json",
-        color: 0x0077ff,
-        background: 0x000000,
-        text: "DEEP SPACE NINE"
-      }
-    ]
-  },
-  {
-    category: "Generic",
-    presets: [
-      {
-        name: "Hello World",
-        font: "Federation_Regular.json",
-        color: 0x0077ff,
-        background: 0x000000,
-        text: "HELLO WORLD"
-      },
-      {
-        name: "Custom Text",
-        font: "Federation_Regular.json",
-        color: 0x0077ff,
-        background: 0x000000,
-        text: "CUSTOM TEXT"
-      }
-    ]
-  }
-];
+import { presets } from './presets';
+import type { Preset } from './presets';
 
 const fonts = ['Federation_Regular.json']; // add more JSON fonts here
 
@@ -82,6 +22,17 @@ const App: React.FC = () => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const textMeshRef = useRef<THREE.Mesh | null>(null);
   const pillMeshRef = useRef<THREE.Mesh | null>(null);
+
+  // Get unique tags and group presets by tag
+  const getPresetGroups = () => {
+    const allTags = presets.flatMap(preset => preset.tags);
+    const uniqueTags = [...new Set(allTags)].sort();
+    
+    return uniqueTags.map(tag => ({
+      tag,
+      presets: presets.filter(preset => preset.tags.includes(tag))
+    }));
+  };
 
   // Apply preset when selected
   const applyPreset = (preset: Preset) => {
@@ -259,8 +210,7 @@ const App: React.FC = () => {
           <select
             value={selectedPreset?.name || ''}
             onChange={(e) => {
-              const preset = presetGroups
-                .flatMap(group => group.presets)
+              const preset = presets
                 .find(p => p.name === e.target.value);
               if (preset) {
                 applyPreset(preset);
@@ -269,8 +219,8 @@ const App: React.FC = () => {
             style={{ minWidth: '200px' }}
           >
             <option value="">Select a preset...</option>
-            {presetGroups.map((group) => (
-              <optgroup key={group.category} label={group.category}>
+            {getPresetGroups().map((group) => (
+              <optgroup key={group.tag} label={group.tag}>
                 {group.presets.map((preset) => (
                   <option key={preset.name} value={preset.name}>
                     {preset.name}
