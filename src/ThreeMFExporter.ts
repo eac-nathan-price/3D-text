@@ -98,8 +98,10 @@ export class ThreeMFExporter {
     // Add each mesh as a component with positioning
     meshes.forEach((_mesh, index) => {
       const componentId = index + 1;
-      const xOffset = index === 0 ? -13.3 : 13.3; // Position text and background side by side
-      xml += `    <component p:path="/3D/Objects/object_3.model" objectid="${componentId}" p:UUID="${this.generateUUID()}" transform="1 0 0 0 1 0 0 0 1 ${xOffset} 0 0"/>\n`;
+      // Position text first, then background below it
+      const xOffset = 0;
+      const yOffset = index === 0 ? 0 : -30; // Background goes below text
+      xml += `    <component p:path="/3D/Objects/object_3.model" objectid="${componentId}" p:UUID="${this.generateUUID()}" transform="1 0 0 0 1 0 0 0 1 ${xOffset} ${yOffset} 0"/>\n`;
     });
     
     xml += '   </components>\n';
@@ -199,6 +201,18 @@ export class ThreeMFExporter {
     const extruderColors = ['#FEC600', '#0086D6', '#FF0000', '#00FF00']; // Default colors
     
     let json = '{\n';
+    json += '    "curr_bed_type": "Textured PEI Plate",\n';
+    json += '    "default_filament_profile": [\n';
+    
+    // Add Bambu PLA Basic profile for each material
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "Bambu PLA Basic @BBL X1C 0.2 nozzle"';
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    
+    json += '    ],\n';
+    json += '    "default_print_profile": "0.10mm Standard @BBL X1C 0.2 nozzle",\n';
     json += '    "extruder_colour": [\n';
     json += '        "#018001"\n';
     json += '    ],\n';
@@ -234,7 +248,9 @@ export class ThreeMFExporter {
     }
     
     json += '    ],\n';
-    json += '    "filament_map_mode": "Auto For Flush"\n';
+    json += '    "filament_map_mode": "Auto For Flush",\n';
+    json += '    "printer_model": "Bambu Lab X1 Carbon",\n';
+    json += '    "printer_settings_id": "Bambu Lab X1 Carbon 0.2 nozzle"\n';
     json += '}';
     
     return json;
@@ -258,7 +274,7 @@ export class ThreeMFExporter {
       
       xml += `    <part id="${partId}" subtype="normal_part">\n`;
       xml += `      <metadata key="name" value="${mesh.name || 'Part_' + (index + 1)}"/>\n`;
-      xml += `      <metadata key="matrix" value="1 0 0 ${index === 0 ? -13.3 : 13.3} 0 1 0 0 0 0 1 0 0 0 0 1"/>\n`;
+      xml += `      <metadata key="matrix" value="1 0 0 0 0 1 0 ${index === 0 ? 0 : -30} 0 0 1 0 0 0 0 1"/>\n`;
       xml += `      <metadata key="extruder" value="${extruderId}"/>\n`;
       xml += `      <mesh_stat face_count="${faceCount}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n`;
       xml += `    </part>\n`;
