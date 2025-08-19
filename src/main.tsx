@@ -6,12 +6,75 @@ import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { ThreeMFExporter } from './ThreeMFExporter';
 
+// Preset system with grouped categories
+interface Preset {
+  name: string;
+  font: string;
+  color: number;
+  background: number;
+  text: string;
+}
+
+interface PresetGroup {
+  category: string;
+  presets: Preset[];
+}
+
+const presetGroups: PresetGroup[] = [
+  {
+    category: "Star Trek",
+    presets: [
+      {
+        name: "TNG Title",
+        font: "Federation_Regular.json",
+        color: 0x0077ff,
+        background: 0x000000,
+        text: "STAR TREK"
+      },
+      {
+        name: "TOS Title",
+        font: "Federation_Regular.json",
+        color: 0x0077ff,
+        background: 0x000000,
+        text: "STAR TREK"
+      },
+      {
+        name: "DS9 Title",
+        font: "Federation_Regular.json",
+        color: 0x0077ff,
+        background: 0x000000,
+        text: "DEEP SPACE NINE"
+      }
+    ]
+  },
+  {
+    category: "Generic",
+    presets: [
+      {
+        name: "Hello World",
+        font: "Federation_Regular.json",
+        color: 0x0077ff,
+        background: 0x000000,
+        text: "HELLO WORLD"
+      },
+      {
+        name: "Custom Text",
+        font: "Federation_Regular.json",
+        color: 0x0077ff,
+        background: 0x000000,
+        text: "CUSTOM TEXT"
+      }
+    ]
+  }
+];
+
 const fonts = ['Federation_Regular.json']; // add more JSON fonts here
 
 const App: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('STAR TREK');
   const [selectedFont, setSelectedFont] = useState(fonts[0]);
+  const [selectedPreset, setSelectedPreset] = useState<Preset | null>(null);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -19,6 +82,13 @@ const App: React.FC = () => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const textMeshRef = useRef<THREE.Mesh | null>(null);
   const pillMeshRef = useRef<THREE.Mesh | null>(null);
+
+  // Apply preset when selected
+  const applyPreset = (preset: Preset) => {
+    setText(preset.text);
+    setSelectedFont(preset.font);
+    setSelectedPreset(preset);
+  };
 
   // Initialize scene
   useEffect(() => {
@@ -90,7 +160,7 @@ const App: React.FC = () => {
       textGeo.center();
 
       const textMat = new THREE.MeshPhongMaterial({ 
-        color: 0x0077ff, // Changed to the exact previous background color (blue)
+        color: selectedPreset?.color || 0x0077ff, // Use preset color or default blue
         name: 'TextMaterial'
       });
       const textMesh = new THREE.Mesh(textGeo, textMat);
@@ -134,7 +204,7 @@ const App: React.FC = () => {
           bevelEnabled: false,
         });
         const pillMat = new THREE.MeshPhongMaterial({ 
-          color: 0x000000, // Changed from 0x0077ff (blue) to 0x000000 (black)
+          color: selectedPreset?.background || 0x000000, // Use preset background or default black
           name: 'BackgroundMaterial'
         });
         const pillMesh = new THREE.Mesh(pillGeo, pillMat);
@@ -144,7 +214,7 @@ const App: React.FC = () => {
         if (sceneRef.current) sceneRef.current.add(pillMesh);
       }
     });
-  }, [text, selectedFont]);
+  }, [text, selectedFont, selectedPreset]);
 
   // Export scene to 3MF
   const export3MF = async () => {
@@ -181,8 +251,35 @@ const App: React.FC = () => {
           background: '#ddd',
           display: 'flex',
           gap: '12px',
+          alignItems: 'center',
         }}
       >
+        <div>
+          <label>Preset: </label>
+          <select
+            value={selectedPreset?.name || ''}
+            onChange={(e) => {
+              const preset = presetGroups
+                .flatMap(group => group.presets)
+                .find(p => p.name === e.target.value);
+              if (preset) {
+                applyPreset(preset);
+              }
+            }}
+            style={{ minWidth: '200px' }}
+          >
+            <option value="">Select a preset...</option>
+            {presetGroups.map((group) => (
+              <optgroup key={group.category} label={group.category}>
+                {group.presets.map((preset) => (
+                  <option key={preset.name} value={preset.name}>
+                    {preset.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
         <div>
           <label>Font: </label>
           <select
