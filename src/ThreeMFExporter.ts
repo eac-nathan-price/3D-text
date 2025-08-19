@@ -96,12 +96,13 @@ export class ThreeMFExporter {
     xml += '   <components>\n';
     
     // Add each mesh as a component with positioning
-    meshes.forEach((_mesh, index) => {
+    meshes.forEach((mesh, index) => {
       const componentId = index + 1;
-      // Position text first, then background below it
-      const xOffset = 0;
-      const yOffset = index === 0 ? 0 : -30; // Background goes below text
-      xml += `    <component p:path="/3D/Objects/object_3.model" objectid="${componentId}" p:UUID="${this.generateUUID()}" transform="1 0 0 0 1 0 0 0 1 ${xOffset} ${yOffset} 0"/>\n`;
+      // Get the actual position from the mesh
+      const x = mesh.position.x;
+      const y = mesh.position.y;
+      const z = mesh.position.z;
+      xml += `    <component p:path="/3D/Objects/object_3.model" objectid="${componentId}" p:UUID="${this.generateUUID()}" transform="1 0 0 0 1 0 0 0 1 ${x} ${y} ${z}"/>\n`;
     });
     
     xml += '   </components>\n';
@@ -113,8 +114,8 @@ export class ThreeMFExporter {
   private generateMainBuildSection(): string {
     let xml = ' <build p:UUID="' + this.generateUUID() + '">\n';
     
-    // Only place the assembly object
-    xml += '  <item objectid="3" p:UUID="' + this.generateUUID() + '" transform="1 0 0 0 1 0 0 0 1 141.3 128 12.8" printable="1"/>\n';
+    // Place the assembly object at the origin
+    xml += '  <item objectid="3" p:UUID="' + this.generateUUID() + '" transform="1 0 0 0 1 0 0 0 1 0 0 0" printable="1"/>\n';
     
     xml += ' </build>\n';
     return xml;
@@ -274,9 +275,9 @@ export class ThreeMFExporter {
       
       xml += `    <part id="${partId}" subtype="normal_part">\n`;
       xml += `      <metadata key="name" value="${mesh.name || 'Part_' + (index + 1)}"/>\n`;
-      xml += `      <metadata key="matrix" value="1 0 0 0 0 1 0 ${index === 0 ? 0 : -30} 0 0 1 0 0 0 0 1"/>\n`;
+      xml += `      <metadata key="matrix" value="1 0 0 0 1 0 0 0 1 ${mesh.position.x} ${mesh.position.y} ${mesh.position.z}"/>\n`;
       xml += `      <metadata key="extruder" value="${extruderId}"/>\n`;
-      xml += `      <mesh_stat face_count="${faceCount}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n`;
+      xml += `      <metadata key="mesh_stat" face_count="${faceCount}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n`;
       xml += `    </part>\n`;
     });
     
@@ -298,7 +299,7 @@ export class ThreeMFExporter {
     xml += '  <assemble>\n';
     
     // Add assemble item for the assembly
-    xml += '   <assemble_item object_id="3" instance_id="0" transform="1 0 0 0 1 0 0 0 1 141.3 128 12.8" offset="0 0 0" />\n';
+    xml += '   <assemble_item object_id="3" instance_id="0" transform="1 0 0 0 1 0 0 0 1 0 0 0" offset="0 0 0" />\n';
     
     xml += '  </assemble>\n';
     xml += '</config>';

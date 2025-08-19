@@ -82,7 +82,7 @@ const App: React.FC = () => {
       const textGeo = new TextGeometry(text, {
         font,
         size: 30,
-        depth: 10,
+        depth: 5, // Reduced from 10 to 5 for thinner text
         curveSegments: 12,
         bevelEnabled: false,
       });
@@ -94,6 +94,11 @@ const App: React.FC = () => {
         name: 'TextMaterial'
       });
       const textMesh = new THREE.Mesh(textGeo, textMat);
+      // Position text so it sits entirely above the background pill
+      // Pill is at z=0 with depth 5, so its top surface is at z=5
+      // Text should start at z=5 (touching the pill's top) and extend to z=10
+      // Since text depth is 5, position center at z=7.5 (5 + 2.5)
+      textMesh.position.z = 5 + (5 / 2); // Pill top (5) + half text depth (2.5) = 7.5
       textMeshRef.current = textMesh;
       if (sceneRef.current) sceneRef.current.add(textMesh);
 
@@ -125,7 +130,7 @@ const App: React.FC = () => {
         shape.quadraticCurveTo(x, y, x + radius, y);
 
         const pillGeo = new THREE.ExtrudeGeometry(shape, {
-          depth: 5,
+          depth: 5, // Same depth as text for clean alignment
           bevelEnabled: false,
         });
         const pillMat = new THREE.MeshPhongMaterial({ 
@@ -133,7 +138,8 @@ const App: React.FC = () => {
           name: 'BackgroundMaterial'
         });
         const pillMesh = new THREE.Mesh(pillGeo, pillMat);
-        pillMesh.position.z = -6;
+        // Position pill at z=0 (build plate level) so text sits on top
+        pillMesh.position.z = 0;
         pillMeshRef.current = pillMesh;
         if (sceneRef.current) sceneRef.current.add(pillMesh);
       }
