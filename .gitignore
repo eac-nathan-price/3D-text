@@ -23,5 +23,5 @@ dist-ssr
 *.sln
 *.sw?
 
-# Examples directory for studying 3MF files
-examples/
+# Extracted 3MF files
+public/3mf/.*
