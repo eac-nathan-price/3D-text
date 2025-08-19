@@ -199,23 +199,38 @@ export class ThreeMFExporter {
 
   private generateProjectSettingsXML(meshes: THREE.Mesh[]): string {
     const materialCount = meshes.length;
-    const extruderColors = ['#FEC600', '#0086D6', '#FF0000', '#00FF00']; // Default colors
     
     let json = '{\n';
-    json += '    "curr_bed_type": "Textured PEI Plate",\n';
     json += '    "default_filament_profile": [\n';
     
     // Add Bambu PLA Basic profile for each material
     for (let i = 0; i < materialCount; i++) {
-      json += '        "Bambu PLA Basic @BBL X1C 0.2 nozzle"';
+      json += '        "Bambu PLA Basic @BBL X1C"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
     
     json += '    ],\n';
-    json += '    "default_print_profile": "0.10mm Standard @BBL X1C 0.2 nozzle",\n';
+    json += '    "default_print_profile": "0.20mm Standard @BBL X1C",\n';
+    
+    // Add print quality settings that affect cost
+    json += '    "layer_height": "0.2",\n';
+    json += '    "initial_layer_print_height": "0.2",\n';
+    json += '    "top_shell_layers": "3",\n';
+    json += '    "bottom_shell_layers": "3",\n';
+    json += '    "sparse_infill_density": "15%",\n';
+    json += '    "enable_support": "0",\n';
+    json += '    "enable_prime_tower": "1",\n';
+    
     json += '    "extruder_colour": [\n';
-    json += '        "#018001"\n';
+    
+    // Add extruder colors for each material
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "#018001"';
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    
     json += '    ],\n';
     json += '    "filament_colour": [\n';
     
@@ -223,7 +238,7 @@ export class ThreeMFExporter {
     for (let i = 0; i < materialCount; i++) {
       const meshMaterial = meshes[i].material;
       const material = Array.isArray(meshMaterial) ? meshMaterial[0] : meshMaterial;
-      let color = extruderColors[i % extruderColors.length];
+      let color = '#FFCC00'; // Default color
       
       if (material instanceof THREE.MeshBasicMaterial || 
           material instanceof THREE.MeshPhongMaterial || 
@@ -250,8 +265,118 @@ export class ThreeMFExporter {
     
     json += '    ],\n';
     json += '    "filament_map_mode": "Auto For Flush",\n';
+    
+    // Add comprehensive filament information
+    json += '    "filament_cost": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "24.99"'; // Standard Bambu PLA cost
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "filament_density": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "1.26"'; // Standard PLA density
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "filament_diameter": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "1.75"'; // Standard 1.75mm diameter
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "filament_type": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "PLA"'; // Standard PLA type
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "filament_vendor": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "Bambu Lab"'; // Standard Bambu Lab vendor
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "filament_settings_id": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "Bambu PLA Basic @BBL X1C"'; // Standard Bambu profile
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    // Add more filament properties for better compatibility
+    json += '    "filament_flow_ratio": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "0.98"'; // Standard PLA flow ratio
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "filament_max_volumetric_speed": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "21"'; // Standard PLA max volumetric speed
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "filament_ids": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "GFA00"'; // Standard Bambu PLA ID
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
     json += '    "printer_model": "Bambu Lab X1 Carbon",\n';
-    json += '    "printer_settings_id": "Bambu Lab X1 Carbon 0.2 nozzle"\n';
+    json += '    "printer_settings_id": "Bambu Lab X1 Carbon 0.2 nozzle",\n';
+    
+    // Add important printer settings for better compatibility
+    json += '    "curr_bed_type": "Textured PEI Plate",\n';
+    json += '    "hot_plate_temp": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "55"'; // Standard PLA bed temperature
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "hot_plate_temp_initial_layer": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "55"'; // Standard PLA initial layer bed temperature
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "nozzle_temperature_range_low": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "200"'; // Standard PLA nozzle temperature low
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
+    json += '    "nozzle_temperature_range_high": [\n';
+    for (let i = 0; i < materialCount; i++) {
+      json += '        "220"'; // Standard PLA nozzle temperature high
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
+    json += '    ],\n';
+    
     json += '}';
     
     return json;
@@ -288,11 +413,15 @@ export class ThreeMFExporter {
     xml += '    <metadata key="locked" value="false"/>\n';
     xml += '    <metadata key="filament_map_mode" value="Auto For Flush"/>\n';
     
+    // Add filament maps for each material
+    const filamentMaps = meshes.map((_, index) => index + 1).join(' ');
+    xml += `    <metadata key="filament_maps" value="${filamentMaps}"/>\n`;
+    
     // Add model instance for the assembly
     xml += '    <model_instance>\n';
     xml += '      <metadata key="object_id" value="3"/>\n';
     xml += '      <metadata key="instance_id" value="0"/>\n';
-    xml += '      <metadata key="identify_id" value="132"/>\n';
+    xml += '      <metadata key="identify_id" value="105"/>\n';
     xml += '    </model_instance>\n';
     
     xml += '  </plate>\n';
