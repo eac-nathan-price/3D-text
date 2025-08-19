@@ -234,6 +234,11 @@ const App: React.FC = () => {
         textMesh.scale.set(scaleFactor, scaleFactor, 1);
         
         console.log(`Text sizing: Current(${currentWidth.toFixed(2)}mm x ${currentHeight.toFixed(2)}mm), Scale: ${scaleFactor.toFixed(3)}, Final(${(currentWidth * scaleFactor).toFixed(2)}mm x ${(currentHeight * scaleFactor).toFixed(2)}mm)`);
+        console.log('Text mesh after scaling:', {
+          scale: textMesh.scale,
+          position: textMesh.position,
+          quaternion: textMesh.quaternion
+        });
       }
 
       // Create pill background
@@ -405,6 +410,13 @@ const App: React.FC = () => {
           // This makes the cylinder lie flat (parallel to the pill's top/bottom faces)
           holeMesh.rotation.x = Math.PI / 2;
           
+          console.log('Hole created:', {
+            position: holeMesh.position,
+            rotation: holeMesh.rotation,
+            scale: holeMesh.scale,
+            quaternion: holeMesh.quaternion
+          });
+          
           holeMeshRef.current = holeMesh; // Store the hole mesh
           if (sceneRef.current) sceneRef.current.add(holeMesh);
         }
@@ -416,6 +428,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (textMeshRef.current && textMeshRef.current.material instanceof THREE.MeshPhongMaterial) {
       textMeshRef.current.material.color.setHex(textColor);
+      console.log('Updated text material color to:', '#' + textColor.toString(16).padStart(6, '0'));
     }
   }, [textColor]);
 
@@ -423,6 +436,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (pillMeshRef.current && pillMeshRef.current.material instanceof THREE.MeshPhongMaterial) {
       pillMeshRef.current.material.color.setHex(backgroundColor);
+      console.log('Updated background material color to:', '#' + backgroundColor.toString(16).padStart(6, '0'));
     }
   }, [backgroundColor]);
 

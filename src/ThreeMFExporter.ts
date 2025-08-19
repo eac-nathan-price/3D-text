@@ -54,7 +54,7 @@ export class ThreeMFExporter {
           material instanceof THREE.MeshStandardMaterial) {
         color = material.color ? '#' + material.color.getHexString() : 'N/A';
       }
-      console.log(`Mesh ${index}:`, mesh.name, 'Material:', material.name, 'Current Color:', color);
+      console.log(`Mesh ${index}:`, mesh.name, 'Material:', material.name, 'Current Color:', color, 'Position:', mesh.position, 'Scale:', mesh.scale, 'Rotation:', mesh.rotation);
     });
 
     // Validate and clean geometry to prevent non-manifold edges
@@ -223,14 +223,23 @@ export class ThreeMFExporter {
     xml += '  <object id="3" p:UUID="' + this.generateUUID() + '" type="model">\n';
     xml += '   <components>\n';
     
-    // Add each mesh as a component with positioning
+    // Add each mesh as a component with proper transformations
     meshes.forEach((mesh, index) => {
       const componentId = index + 1;
-      // Get the actual position from the mesh
-      const x = mesh.position.x;
-      const y = mesh.position.y;
-      const z = mesh.position.z;
-      xml += `    <component p:path="/3D/Objects/object_3.model" objectid="${componentId}" p:UUID="${this.generateUUID()}" transform="1 0 0 0 1 0 0 0 1 ${x} ${y} ${z}"/>\n`;
+      
+      // Get the complete transformation matrix including scale, rotation, and position
+      const matrix = new THREE.Matrix4();
+      matrix.compose(
+        mesh.position,
+        mesh.quaternion,
+        mesh.scale
+      );
+      
+      // Extract the transformation values from the matrix
+      const elements = matrix.elements;
+      const transform = `${elements[0]} ${elements[1]} ${elements[2]} ${elements[3]} ${elements[4]} ${elements[5]} ${elements[6]} ${elements[7]} ${elements[8]} ${elements[9]} ${elements[10]} ${elements[11]} ${elements[12]} ${elements[13]} ${elements[14]} ${elements[15]}`;
+      
+      xml += `    <component p:path="/3D/Objects/object_3.model" objectid="${componentId}" p:UUID="${this.generateUUID()}" transform="${transform}"/>\n`;
     });
     
     xml += '   </components>\n';
@@ -403,7 +412,7 @@ export class ThreeMFExporter {
           material instanceof THREE.MeshStandardMaterial) {
         if (material.color) {
           color = '#' + material.color.getHexString().toUpperCase();
-          console.log(`Mesh ${i} (${mesh.name || 'unnamed'}): Using color ${color} from material`);
+          console.log(`Mesh ${i} (${mesh.name || 'unnamed'}): Using color ${color} from material ${material.name}`);
         } else {
           console.warn(`Mesh ${i} (${mesh.name || 'unnamed'}): Material has no color, using fallback ${color}`);
         }
@@ -561,9 +570,21 @@ export class ThreeMFExporter {
       const extruderId = index + 1;
       const faceCount = Math.floor((mesh.geometry.attributes.position?.count || 0) / 3);
       
+      // Get the complete transformation matrix including scale, rotation, and position
+      const matrix = new THREE.Matrix4();
+      matrix.compose(
+        mesh.position,
+        mesh.quaternion,
+        mesh.scale
+      );
+      
+      // Extract the transformation values from the matrix
+      const elements = matrix.elements;
+      const transform = `${elements[0]} ${elements[1]} ${elements[2]} ${elements[3]} ${elements[4]} ${elements[5]} ${elements[6]} ${elements[7]} ${elements[8]} ${elements[9]} ${elements[10]} ${elements[11]} ${elements[12]} ${elements[13]} ${elements[14]} ${elements[15]}`;
+      
       xml += `    <part id="${partId}" subtype="normal_part">\n`;
       xml += `      <metadata key="name" value="${mesh.name || 'Part_' + (index + 1)}"/>\n`;
-      xml += `      <metadata key="matrix" value="1 0 0 0 1 0 0 0 1 ${mesh.position.x} ${mesh.position.y} ${mesh.position.z}"/>\n`;
+      xml += `      <metadata key="matrix" value="${transform}"/>\n`;
       xml += `      <metadata key="extruder" value="${extruderId}"/>\n`;
       xml += `      <metadata key="mesh_stat" face_count="${faceCount}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n`;
       xml += `    </part>\n`;
