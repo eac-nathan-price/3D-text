@@ -10,16 +10,6 @@ export class ThreeMFExporter {
   private scene: THREE.Scene;
   private options: ExportOptions;
 
-  /**
-   * Creates a new ThreeMFExporter instance.
-   * 
-   * The exporter automatically extracts colors from the current materials in the scene.
-   * This means it will use whatever colors are currently applied to objects, whether they
-   * come from themes or have been customized by the user.
-   * 
-   * @param scene - The Three.js scene to export
-   * @param options - Export options for coordinate system and units
-   */
   constructor(scene: THREE.Scene, options: Partial<ExportOptions> = {}) {
     this.scene = scene;
     this.options = {
@@ -44,7 +34,6 @@ export class ThreeMFExporter {
     }
 
     // Debug: Log materials found with their current colors
-    // This shows the actual colors that will be used in the 3MF export
     console.log('Found meshes:', meshes.length);
     meshes.forEach((mesh, index) => {
       const material = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
@@ -55,13 +44,6 @@ export class ThreeMFExporter {
         color = material.color ? '#' + material.color.getHexString() : 'N/A';
       }
       console.log(`Mesh ${index}:`, mesh.name, 'Material:', material.name, 'Current Color:', color, 'Position:', mesh.position, 'Scale:', mesh.scale, 'Rotation:', mesh.rotation);
-    });
-
-    // Validate and clean geometry to prevent non-manifold edges
-    meshes.forEach((mesh, index) => {
-      if (mesh.geometry) {
-        this.validateAndCleanGeometry(mesh.geometry, `Mesh ${index} (${mesh.name || 'unnamed'})`);
-      }
     });
 
     // Generate Bambu Studio compatible 3MF structure
@@ -85,116 +67,6 @@ export class ThreeMFExporter {
 
     const zipData = zipSync(files, { level: 8 });
     return new Blob([zipData], { type: 'application/3mf' });
-  }
-
-  /**
-   * Validates and cleans geometry to prevent non-manifold edges
-   */
-  private validateAndCleanGeometry(geometry: THREE.BufferGeometry, meshName: string): void {
-    try {
-      // Ensure geometry has required attributes
-      if (!geometry.attributes.position) {
-        console.warn(`${meshName}: Missing position attribute`);
-        return;
-      }
-
-      // Check for degenerate triangles (triangles with zero area)
-      if (geometry.index) {
-        const indices = geometry.index;
-        let degenerateCount = 0;
-        
-        for (let i = 0; i < indices.count; i += 3) {
-          const v1 = indices.getX(i);
-          const v2 = indices.getX(i + 1);
-          const v3 = indices.getX(i + 2);
-          
-          if (v1 === v2 || v2 === v3 || v1 === v3) {
-            degenerateCount++;
-          }
-        }
-        
-        if (degenerateCount > 0) {
-          console.warn(`${meshName}: Found ${degenerateCount} degenerate triangles`);
-        }
-      }
-
-      // Ensure normals are computed for proper rendering
-      if (!geometry.attributes.normal) {
-        geometry.computeVertexNormals();
-        console.log(`${meshName}: Computed vertex normals`);
-      }
-
-      // Ensure bounding box is computed
-      if (!geometry.boundingBox) {
-        geometry.computeBoundingBox();
-      }
-
-      // Ensure bounding sphere is computed
-      if (!geometry.boundingSphere) {
-        geometry.computeBoundingSphere();
-      }
-
-      // Ensure the geometry is properly closed (manifold)
-      this.ensureManifoldGeometry(geometry, meshName);
-
-    } catch (error) {
-      console.warn(`${meshName}: Error validating geometry:`, error);
-    }
-  }
-
-  /**
-   * Ensures geometry is manifold (properly closed) to prevent non-manifold edges
-   */
-  private ensureManifoldGeometry(geometry: THREE.BufferGeometry, meshName: string): void {
-    try {
-      // For text geometry, ensure it's properly closed
-      if (geometry.attributes.position) {
-        const positions = geometry.attributes.position;
-        
-        // Check if we have enough vertices for proper triangulation
-        if (positions.count < 3) {
-          console.warn(`${meshName}: Not enough vertices for triangulation`);
-          return;
-        }
-
-        // For extruded text, ensure the geometry is watertight
-        // This is especially important for 3D printing
-        if (geometry.attributes.uv) {
-          // UV coordinates exist, which suggests this is a proper 3D mesh
-          console.log(`${meshName}: Geometry has UV coordinates, appears to be properly formed`);
-        } else {
-          // No UV coordinates, but this is normal for simple geometries
-          console.log(`${meshName}: Geometry is simple (no UV coordinates)`);
-        }
-
-        // Ensure the geometry has proper winding order
-        if (geometry.attributes.normal) {
-          const normals = geometry.attributes.normal;
-          let consistentNormals = true;
-          
-          // Check if normals are consistent (all pointing outward)
-          for (let i = 0; i < normals.count; i++) {
-            const nx = normals.getX(i);
-            const ny = normals.getY(i);
-            const nz = normals.getZ(i);
-            
-            // Check if normal is a valid unit vector
-            const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
-            if (Math.abs(length - 1.0) > 0.1) {
-              consistentNormals = false;
-              break;
-            }
-          }
-          
-          if (!consistentNormals) {
-            console.warn(`${meshName}: Inconsistent normals detected, recomputing`);
-            geometry.computeVertexNormals();
-          }
-        }
-      }
-    } catch (error) {
-      console.warn(`${meshName}: Error ensuring manifold geometry:`, error);
-    }
   }
 
   private generateMainModelXML(meshes: THREE.Mesh[]): string {
@@ -227,7 +99,7 @@ export class ThreeMFExporter {
     meshes.forEach((mesh, index) => {
       const componentId = index + 1;
       
-      // Get the complete transformation matrix including scale, rotation, and position
+      // Create a proper 4x4 transformation matrix
       const matrix = new THREE.Matrix4();
       matrix.compose(
         mesh.position,
@@ -319,8 +191,6 @@ export class ThreeMFExporter {
         const v2 = indices.getX(i + 1);
         const v3 = indices.getX(i + 2);
         
-        // Ensure proper winding order (counter-clockwise for 3MF)
-        // This helps prevent non-manifold edges
         xml += `     <triangle v1="${v1}" v2="${v2}" v3="${v3}" />\n`;
       }
     } else {
@@ -330,7 +200,6 @@ export class ThreeMFExporter {
         const v2 = i + 1;
         const v3 = i + 2;
         
-        // Ensure we don't exceed vertex count
         if (v2 < positions.count && v3 < positions.count) {
           xml += `     <triangle v1="${v1}" v2="${v2}" v3="${v3}" />\n`;
         }
@@ -344,11 +213,6 @@ export class ThreeMFExporter {
   private generateProjectSettingsXML(meshes: THREE.Mesh[]): string {
     const materialCount = meshes.length;
     
-    // This method generates the project settings JSON that Bambu Studio uses
-    // to configure filaments and extruders. The key is that we extract colors
-    // directly from the Three.js scene materials to ensure the 3MF colors
-    // exactly match what the user sees in the web application.
-    
     let json = '{\n';
     json += '    "default_filament_profile": [\n';
     
@@ -361,8 +225,6 @@ export class ThreeMFExporter {
     
     json += '    ],\n';
     json += '    "default_print_profile": "0.20mm Standard @BBL X1C",\n';
-    
-    // Add print quality settings that affect cost
     json += '    "layer_height": "0.2",\n';
     json += '    "initial_layer_print_height": "0.2",\n';
     json += '    "top_shell_layers": "3",\n';
@@ -373,14 +235,13 @@ export class ThreeMFExporter {
     
     json += '    "extruder_colour": [\n';
     
-    // Add extruder colors for each material - use the same colors as the filaments
+    // Add extruder colors for each material
     for (let i = 0; i < materialCount; i++) {
       const mesh = meshes[i];
       const meshMaterial = mesh.material;
       const material = Array.isArray(meshMaterial) ? meshMaterial[0] : meshMaterial;
       let color = '#FFCC00'; // Default fallback color
       
-      // Use the same color logic as filament colors for consistency
       if (material instanceof THREE.MeshBasicMaterial || 
           material instanceof THREE.MeshPhongMaterial || 
           material instanceof THREE.MeshStandardMaterial) {
@@ -398,15 +259,12 @@ export class ThreeMFExporter {
     json += '    "filament_colour": [\n';
     
     // Extract current colors from each mesh's material in the scene
-    // This ensures the 3MF uses the actual colors visible in the Three.js scene
-    // rather than any theme or default values
     for (let i = 0; i < materialCount; i++) {
       const mesh = meshes[i];
       const meshMaterial = mesh.material;
       const material = Array.isArray(meshMaterial) ? meshMaterial[0] : meshMaterial;
       let color = '#FFCC00'; // Default fallback color
       
-      // Always use the current color from the material in the scene
       if (material instanceof THREE.MeshBasicMaterial || 
           material instanceof THREE.MeshPhongMaterial || 
           material instanceof THREE.MeshStandardMaterial) {
@@ -441,7 +299,7 @@ export class ThreeMFExporter {
     // Add comprehensive filament information
     json += '    "filament_cost": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "24.99"'; // Standard Bambu PLA cost
+      json += '        "24.99"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -449,7 +307,7 @@ export class ThreeMFExporter {
     
     json += '    "filament_density": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "1.26"'; // Standard PLA density
+      json += '        "1.26"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -457,7 +315,7 @@ export class ThreeMFExporter {
     
     json += '    "filament_diameter": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "1.75"'; // Standard 1.75mm diameter
+      json += '        "1.75"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -465,7 +323,7 @@ export class ThreeMFExporter {
     
     json += '    "filament_type": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "PLA"'; // Standard PLA type
+      json += '        "PLA"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -473,7 +331,7 @@ export class ThreeMFExporter {
     
     json += '    "filament_vendor": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "Bambu Lab"'; // Standard Bambu Lab vendor
+      json += '        "Bambu Lab"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -481,16 +339,15 @@ export class ThreeMFExporter {
     
     json += '    "filament_settings_id": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "Bambu PLA Basic @BBL X1C"'; // Standard Bambu profile
+      json += '        "Bambu PLA Basic @BBL X1C"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
     json += '    ],\n';
     
-    // Add more filament properties for better compatibility
     json += '    "filament_flow_ratio": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "0.98"'; // Standard PLA flow ratio
+      json += '        "0.98"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -498,7 +355,7 @@ export class ThreeMFExporter {
     
     json += '    "filament_max_volumetric_speed": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "21"'; // Standard PLA max volumetric speed
+      json += '        "21"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -506,7 +363,7 @@ export class ThreeMFExporter {
     
     json += '    "filament_ids": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "GFA00"'; // Standard Bambu PLA ID
+      json += '        "GFA00"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -514,12 +371,10 @@ export class ThreeMFExporter {
     
     json += '    "printer_model": "Bambu Lab X1 Carbon",\n';
     json += '    "printer_settings_id": "Bambu Lab X1 Carbon 0.2 nozzle",\n';
-    
-    // Add important printer settings for better compatibility
     json += '    "curr_bed_type": "Textured PEI Plate",\n';
     json += '    "hot_plate_temp": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "55"'; // Standard PLA bed temperature
+      json += '        "55"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -527,7 +382,7 @@ export class ThreeMFExporter {
     
     json += '    "hot_plate_temp_initial_layer": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "55"'; // Standard PLA initial layer bed temperature
+      json += '        "55"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -535,7 +390,7 @@ export class ThreeMFExporter {
     
     json += '    "nozzle_temperature_range_low": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "200"'; // Standard PLA nozzle temperature low
+      json += '        "200"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -543,11 +398,11 @@ export class ThreeMFExporter {
     
     json += '    "nozzle_temperature_range_high": [\n';
     for (let i = 0; i < materialCount; i++) {
-      json += '        "220"'; // Standard PLA nozzle temperature high
+      json += '        "220"';
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
-    json += '    ],\n';
+    json += '    ]\n';
     
     json += '}';
     
@@ -570,7 +425,7 @@ export class ThreeMFExporter {
       const extruderId = index + 1;
       const faceCount = Math.floor((mesh.geometry.attributes.position?.count || 0) / 3);
       
-      // Get the complete transformation matrix including scale, rotation, and position
+      // Create a proper 4x4 transformation matrix
       const matrix = new THREE.Matrix4();
       matrix.compose(
         mesh.position,
@@ -659,7 +514,6 @@ export class ThreeMFExporter {
   }
 
   private generateUUID(): string {
-    // Simple UUID v4 generator
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
       const r = Math.random() * 16 | 0;
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
