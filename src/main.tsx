@@ -80,7 +80,10 @@ const App: React.FC = () => {
     // Initialize with Keychain product
     const keychainProduct = products.find(p => p.name === "Keychain");
     if (keychainProduct) {
+      console.log('Initializing with Keychain product:', keychainProduct);
       applyProduct(keychainProduct);
+    } else {
+      console.error('Keychain product not found!');
     }
   }, []);
 
@@ -134,7 +137,10 @@ const App: React.FC = () => {
 
   // Load JSON font and update text mesh
   useEffect(() => {
-    if (!sceneRef.current) return;
+    if (!sceneRef.current || !selectedProduct) {
+      console.log('Waiting for scene and product to be ready...');
+      return;
+    }
 
     const loader = new FontLoader();
     loader.load(`/fonts/${selectedFont}`, (font: any) => {
@@ -146,7 +152,7 @@ const App: React.FC = () => {
       const textGeo = new TextGeometry(text, {
         font,
         size: 30,
-        depth: selectedProduct ? selectedProduct.text.thickness : 5, // Use product thickness or default
+        depth: selectedProduct.text.thickness + selectedProduct.text.overlap, // Use product thickness + overlap
         curveSegments: 12,
         bevelEnabled: false,
       });
@@ -173,31 +179,36 @@ const App: React.FC = () => {
       // Ensure the material name is set for proper identification in the exporter
       textMat.name = 'TextMaterial';
       const textMesh = new THREE.Mesh(textGeo, textMat);
-      // Position text based on product specifications
-      if (selectedProduct) {
-        // Text starts with overlap into background, then extends above it
-        const backgroundThickness = selectedProduct.background.thickness;
-        const textThickness = selectedProduct.text.thickness;
-        const overlap = selectedProduct.text.overlap;
-        
-        // Text should start at (background thickness - overlap) and extend to (background thickness + text thickness - overlap)
-        // For keychain: background is 2mm thick, text is 1mm thick with 0.05mm overlap
-        // Text should go from z=1.95mm to z=2.95mm (centered at z=2.45mm)
-        const textStartZ = backgroundThickness - overlap;
-        const textCenterZ = textStartZ + (textThickness / 2);
-        textMesh.position.z = textCenterZ;
-        
-        console.log(`Text positioning: background thickness=${backgroundThickness}mm, text thickness=${textThickness}mm, overlap=${overlap}mm`);
-        console.log(`Text Z range: ${textStartZ.toFixed(3)}mm to ${(textStartZ + textThickness).toFixed(3)}mm, center at ${textCenterZ.toFixed(3)}mm`);
-      } else {
-        // Fallback positioning for when no product is selected
-        textMesh.position.z = 5 + (5 / 2); // Pill top (5) + half text depth (2.5) = 7.5
-      }
+       // Position text based on product specifications
+       if (selectedProduct) {
+         // Text should start at the top surface of the background and extend above it
+         const backgroundThickness = selectedProduct.background.thickness;
+         const textThickness = selectedProduct.text.thickness;
+         const overlap = selectedProduct.text.overlap;
+         const totalTextDepth = textThickness + overlap; // Total Z depth including overlap
+         
+         // Background goes from z=0 to z=backgroundThickness (e.g., 0 to 2mm)
+         // Text should start at backgroundThickness - overlap and extend above it
+         // For keychain: background is 2mm thick, text is 1.05mm thick total
+         // Text should go from z=1.95mm to z=3mm (centered at z=2.475mm)
+         // Since TextGeometry origin is at the center, position at z=2.475mm
+         const textStartZ = backgroundThickness - overlap; // 2mm - 0.05mm = 1.95mm
+         const textCenterZ = textStartZ + (totalTextDepth / 2); // 1.95mm + 1.05mm/2 = 2.475mm
+         textMesh.position.z = textCenterZ;
+         
+         console.log(`Text positioning: background thickness=${backgroundThickness}mm, text thickness=${textThickness}mm, overlap=${overlap}mm`);
+         console.log(`Total text depth: ${totalTextDepth}mm`);
+         console.log(`Background Z range: 0mm to ${backgroundThickness}mm`);
+         console.log(`Text Z range: ${textStartZ.toFixed(3)}mm to ${(textStartZ + totalTextDepth).toFixed(3)}mm, center at ${textCenterZ.toFixed(3)}mm`);
+         console.log(`Text extends ${textThickness}mm above background surface`);
+         console.log(`Text actual Z range: ${textMesh.position.z - (totalTextDepth / 2)}mm to ${textMesh.position.z + (totalTextDepth / 2)}mm`);
+         console.log(`Text starts at z=${textStartZ}mm and ends at z=${(textStartZ + totalTextDepth).toFixed(3)}mm`);
+        }
       textMeshRef.current = textMesh;
       if (sceneRef.current) sceneRef.current.add(textMesh);
 
-        // Scale text based on product size constraints if a product is selected
-        if (selectedProduct && textGeo.boundingBox) {
+        // Scale text based on product size constraints
+        if (textGeo.boundingBox) {
           const { min, max } = textGeo.boundingBox;
           const currentWidth = max.x - min.x;
           const currentHeight = max.y - min.y;
@@ -231,18 +242,16 @@ const App: React.FC = () => {
         // Create pill background
         if (textGeo.boundingBox) {
           const { min, max } = textGeo.boundingBox;
-          const basePadding = selectedProduct ? selectedProduct.background.padding : 10;
+          const basePadding = selectedProduct.background.padding;
           
           // Calculate padding for hole if product has left hole add-on
           let leftPadding = basePadding;
           let rightPadding = basePadding;
-          if (selectedProduct) {
-            const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
-            if (leftHole) {
-              // Hole is 3mm diameter with 1mm padding on all sides = 5mm total width
-              // We need the background to extend 5mm to the left of the text
-              leftPadding = basePadding + leftHole.padding; // basePadding + 1mm = 3mm total left padding
-            }
+          const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
+          if (leftHole) {
+            // Hole is 3mm diameter with 1mm padding on all sides = 5mm total width
+            // We need the background to extend 5mm to the left of the text
+            leftPadding = basePadding + leftHole.padding; // basePadding + 1mm = 3mm total left padding
           }
           
           const width = max.x - min.x + leftPadding + rightPadding;
@@ -269,7 +278,7 @@ const App: React.FC = () => {
           shape.quadraticCurveTo(x, y, x + radius, y);
 
           const pillGeo = new THREE.ExtrudeGeometry(shape, {
-            depth: selectedProduct ? selectedProduct.background.thickness : 5, // Use product thickness or default
+            depth: selectedProduct.background.thickness, // Use product thickness
             bevelEnabled: false,
           });
           
@@ -290,22 +299,40 @@ const App: React.FC = () => {
           const pillMesh = new THREE.Mesh(pillGeo, pillMat);
           
           // Position pill to center it around the text, accounting for left padding
-          if (selectedProduct) {
-            // Pill sits at z=0 (build plate level) with specified thickness
-            pillMesh.position.z = selectedProduct.background.thickness / 2;
-            
-            // Adjust X position to account for left padding (move right to center text)
-            const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
-            if (leftHole) {
-              const leftPadding = leftHole.padding;
-              pillMesh.position.x = leftPadding / 2; // Move right by half the extra padding
-            }
-          } else {
-            // Fallback positioning for when no product is selected
-            pillMesh.position.z = 0;
+          // Pill should go from z=0 to z=2mm
+          // Since ExtrudeGeometry origin is at the center, position at z=1mm (half thickness)
+          pillMesh.position.z = selectedProduct.background.thickness / 2;
+          
+          // Adjust X position to account for left padding (move right to center text)
+          if (leftHole) {
+            const leftPadding = leftHole.padding;
+            pillMesh.position.x = leftPadding / 2; // Move right by half the extra padding
           }
+          
+          console.log(`Pill positioning: thickness=${selectedProduct.background.thickness}mm, center at z=${pillMesh.position.z}mm`);
+          console.log(`Pill Z range: 0mm to ${selectedProduct.background.thickness}mm`);
+          console.log(`Pill actual Z range: ${pillMesh.position.z - (selectedProduct.background.thickness / 2)}mm to ${pillMesh.position.z + (selectedProduct.background.thickness / 2)}mm`);
+
           pillMeshRef.current = pillMesh;
           if (sceneRef.current) sceneRef.current.add(pillMesh);
+          
+          // Debug: Log final positions of both meshes
+          console.log('=== Final Mesh Positions ===');
+          console.log(`Text mesh: position.z = ${textMesh.position.z.toFixed(3)}mm`);
+          console.log(`Pill mesh: position.z = ${pillMesh.position.z.toFixed(3)}mm`);
+          console.log(`Text mesh scale: ${textMesh.scale.x.toFixed(3)} x ${textMesh.scale.y.toFixed(3)} x ${textMesh.scale.z.toFixed(3)}`);
+          
+          // Additional debugging for transform origin verification
+          const textThickness = selectedProduct.text.thickness;
+          const overlap = selectedProduct.text.overlap;
+          const totalTextDepth = textThickness + overlap;
+          const backgroundThickness = selectedProduct.background.thickness;
+          
+          console.log(`Expected text Z range: ${(textMesh.position.z - totalTextDepth/2).toFixed(3)}mm to ${(textMesh.position.z + totalTextDepth/2).toFixed(3)}mm`);
+          console.log(`Expected pill Z range: ${(pillMesh.position.z - backgroundThickness/2).toFixed(3)}mm to ${(pillMesh.position.z + backgroundThickness/2).toFixed(3)}mm`);
+          console.log(`Text should extend ${textThickness}mm above pill surface (z=${backgroundThickness}mm)`);
+          console.log(`Actual text extension above pill: ${(textMesh.position.z + totalTextDepth/2 - backgroundThickness).toFixed(3)}mm`);
+          console.log('===========================');
         }
     });
   }, [text, selectedFont, textColor, backgroundColor, selectedProduct]);
