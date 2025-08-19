@@ -360,26 +360,18 @@ const App: React.FC = () => {
             bottom: protrusionBottom
           });
           
-          if (protrusionLeft || protrusionRight || protrusionTop || protrusionBottom) {
-            console.warn('Text protrudes beyond pill rounded corners!', {
-              protrusionLeft,
-              protrusionRight,
-              protrusionTop,
-              protrusionBottom,
-              textBounds: { left: textLeft, right: textRight, top: textTop, bottom: textBottom },
-              pillBounds: { left: pillLeft, right: pillRight, top: pillTop, bottom: pillBottom }
-            });
-            
-            // Visual indicator: change text color to red for protrusion
-            if (textMeshRef.current.material instanceof THREE.MeshPhongMaterial) {
-              textMeshRef.current.material.color.setHex(0xff0000); // Red for protrusion
-            }
-          } else {
-            // Reset to normal color if no protrusion
-            if (textMeshRef.current.material instanceof THREE.MeshPhongMaterial) {
-              textMeshRef.current.material.color.setHex(textColor);
-            }
-          }
+                     if (protrusionLeft || protrusionRight || protrusionTop || protrusionBottom) {
+             console.warn('Text protrudes beyond pill rounded corners!', {
+               protrusionLeft,
+               protrusionRight,
+               protrusionTop,
+               protrusionBottom,
+               textBounds: { left: textLeft, right: textRight, top: textTop, bottom: textBottom },
+               pillBounds: { left: pillLeft, right: pillRight, top: pillTop, bottom: pillBottom }
+             });
+             
+             // Note: Text color remains unchanged - protrusion is purely informational
+           }
         };
         
         // Check for protrusion after positioning
@@ -419,6 +411,20 @@ const App: React.FC = () => {
       }
     });
   }, [text, selectedFont, textColor, backgroundColor, selectedProduct]);
+
+  // Update text material color when textColor changes
+  useEffect(() => {
+    if (textMeshRef.current && textMeshRef.current.material instanceof THREE.MeshPhongMaterial) {
+      textMeshRef.current.material.color.setHex(textColor);
+    }
+  }, [textColor]);
+
+  // Update background material color when backgroundColor changes
+  useEffect(() => {
+    if (pillMeshRef.current && pillMeshRef.current.material instanceof THREE.MeshPhongMaterial) {
+      pillMeshRef.current.material.color.setHex(backgroundColor);
+    }
+  }, [backgroundColor]);
 
   // Calculate optimal scale factor based on product constraints
   const calculateOptimalScale = (
@@ -682,7 +688,7 @@ const App: React.FC = () => {
                 }</div>
                 {textProtrusion && (
                   <div style={{ 
-                    color: (textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) ? '#ff0000' : '#00aa00',
+                    color: (textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) ? '#ff6600' : '#00aa00',
                     fontWeight: 'bold'
                   }}>
                     <strong>Protrusion:</strong> {
@@ -698,6 +704,9 @@ const App: React.FC = () => {
                         {textProtrusion.bottom && '↓ Bottom '}
                       </div>
                     )}
+                    <div style={{ fontSize: '9px', color: '#666', marginTop: '2px' }}>
+                      Note: Colors remain unchanged - protrusion is informational only
+                    </div>
                   </div>
                 )}
                 <button 
@@ -712,7 +721,7 @@ const App: React.FC = () => {
                     borderRadius: '3px',
                     cursor: 'pointer'
                   }}
-                  title="Manually check for text protrusion beyond pill corners"
+                  title="Manually check for text protrusion beyond pill corners (informational only - colors unchanged)"
                 >
                   Check Protrusion
                 </button>
