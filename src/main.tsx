@@ -154,209 +154,230 @@ const App: React.FC = () => {
       if (textMeshRef.current && sceneRef.current) sceneRef.current.remove(textMeshRef.current);
       if (pillMeshRef.current && sceneRef.current) sceneRef.current.remove(pillMeshRef.current);
 
-             // Create text geometry
-       const textGeo = new TextGeometry(text, {
-         font,
-         size: 30,
-         depth: selectedProduct.text.thickness + selectedProduct.text.overlap, // Use product thickness + overlap
-         curveSegments: 12,
-         bevelEnabled: false,
-       });
-       
-       
-                           textGeo.computeBoundingBox();
-        textGeo.center();
+      // Create text geometry
+      const textGeo = new TextGeometry(text, {
+        font,
+        size: 30,
+        depth: selectedProduct.text.thickness + selectedProduct.text.overlap, // Use product thickness + overlap
+        curveSegments: 12,
+        bevelEnabled: false,
+      });
+      
+      textGeo.computeBoundingBox();
+      textGeo.center();
       
       // Ensure the geometry is properly formed for 3D printing
       // This helps prevent non-manifold edges
       textGeo.computeVertexNormals();
       textGeo.computeBoundingSphere();
       
-      
-
-              // Create text material with color override (can be customized by user)
-        // The 3MF exporter will use whatever color is currently set on this material
-        const textMat = new THREE.MeshPhongMaterial({ 
-          color: textColor, // Use color override or theme color
-          name: 'TextMaterial'
-        });
+      // Create text material with color override (can be customized by user)
+      // The 3MF exporter will use whatever color is currently set on this material
+      const textMat = new THREE.MeshPhongMaterial({ 
+        color: textColor, // Use color override or theme color
+        name: 'TextMaterial'
+      });
       // Ensure the material name is set for proper identification in the exporter
       textMat.name = 'TextMaterial';
       const textMesh = new THREE.Mesh(textGeo, textMat);
-                       // Position text based on product specifications
-         if (selectedProduct) {
-           // Text should start at the top surface of the background and extend above it
-           const backgroundThickness = selectedProduct.background.thickness;
-           const textThickness = selectedProduct.text.thickness;
-           const overlap = selectedProduct.text.overlap;
-           const totalTextDepth = textThickness + overlap; // Total Z depth including overlap
-           
-           // Background goes from z=0 to z=backgroundThickness (e.g., 0 to 2mm)
-           // Text should start at backgroundThickness - overlap and extend above it
-           // For keychain: background is 2mm thick, text is 1.05mm thick total
-           // Text should go from z=1.95mm to z=3mm (centered at z=2.475mm)
-           // Since TextGeometry origin is at the center, position at z=2.475mm
-           const textStartZ = backgroundThickness - overlap; // 2mm - 0.05mm = 1.95mm
-           const textCenterZ = textStartZ + (totalTextDepth / 2); // 1.95mm + 1.05mm/2 = 2.475mm
-           textMesh.position.z = textCenterZ;
-           
-           // Text positioning will be handled after pill creation when we have the dimensions
-           textMesh.position.x = 0; // Temporary position, will be updated
-           textMesh.position.y = 0; // Keep text centered in Y
-         }
+      
+      // Position text based on product specifications
+      if (selectedProduct) {
+        // Text should start at the top surface of the background and extend above it
+        const backgroundThickness = selectedProduct.background.thickness;
+        const textThickness = selectedProduct.text.thickness;
+        const overlap = selectedProduct.text.overlap;
+        const totalTextDepth = textThickness + overlap; // Total Z depth including overlap
+        
+        // Background goes from z=0 to z=backgroundThickness (e.g., 0 to 2mm)
+        // Text should start at backgroundThickness - overlap and extend above it
+        // For keychain: background is 2mm thick, text is 1.05mm thick total
+        // Text should go from z=1.95mm to z=3mm (centered at z=2.475mm)
+        // Since TextGeometry origin is at the center, position at z=2.475mm
+        const textStartZ = backgroundThickness - overlap; // 2mm - 0.05mm = 1.95mm
+        const textCenterZ = textStartZ + (totalTextDepth / 2); // 1.95mm + 1.05mm/2 = 2.475mm
+        textMesh.position.z = textCenterZ;
+        
+        // Text positioning will be handled after pill creation when we have the dimensions
+        textMesh.position.x = 0; // Temporary position, will be updated
+        textMesh.position.y = 0; // Keep text centered in Y
+      }
       textMeshRef.current = textMesh;
       if (sceneRef.current) sceneRef.current.add(textMesh);
 
-        // Scale text based on product size constraints
-        if (textGeo.boundingBox) {
-          const { min, max } = textGeo.boundingBox;
-          const currentWidth = max.x - min.x;
-          const currentHeight = max.y - min.y;
-          
-          // Calculate scaling to meet minimum size requirements
-          const minScaleX = selectedProduct.minSize[0] / currentWidth;
-          const minScaleY = selectedProduct.minSize[1] / currentHeight;
-          let scaleFactor = Math.max(minScaleX, minScaleY);
-          
-          // If minimum requirements are met, check if we can scale up to maximum
-          if (scaleFactor <= 1) {
-            scaleFactor = 1; // No scaling needed for minimum
-          }
-          
-          // Check if scaling to maximum is possible without exceeding either dimension
-          const maxScaleX = selectedProduct.targetSize[0] / currentWidth;
-          const maxScaleY = selectedProduct.targetSize[1] / currentHeight;
-          const maxPossibleScale = Math.min(maxScaleX, maxScaleY);
-          
-          // Apply the larger of the two scales (minimum requirement vs maximum possible)
-          scaleFactor = Math.max(scaleFactor, maxPossibleScale);
-          
-          // Apply uniform scaling to maintain aspect ratio
-          textMesh.scale.set(scaleFactor, scaleFactor, 1);
-          
-          
+      // Apply sizing logic according to product constraints
+      if (textGeo.boundingBox) {
+        const { min, max } = textGeo.boundingBox;
+        const currentWidth = max.x - min.x;
+        const currentHeight = max.y - min.y;
+        
+        // Apply the sizing logic according to the specified criteria
+        const scaleFactor = calculateOptimalScale(
+          currentWidth,
+          currentHeight,
+          selectedProduct.minSize,
+          selectedProduct.targetSize
+        );
+        
+        // Apply uniform scaling to maintain aspect ratio (X and Y scale equally)
+        // Z scale remains 1 to preserve the correct text thickness
+        textMesh.scale.set(scaleFactor, scaleFactor, 1);
+        
+        console.log(`Text sizing: Current(${currentWidth.toFixed(2)}mm x ${currentHeight.toFixed(2)}mm), Scale: ${scaleFactor.toFixed(3)}, Final(${(currentWidth * scaleFactor).toFixed(2)}mm x ${(currentHeight * scaleFactor).toFixed(2)}mm)`);
+      }
+
+      // Create pill background
+      if (textGeo.boundingBox) {
+        const { min, max } = textGeo.boundingBox;
+        const basePadding = selectedProduct.background.padding;
+        
+        // Calculate dimensions for the hole if product has left hole add-on
+        let leftPadding = basePadding;
+        let rightPadding = basePadding;
+        const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
+        
+        if (leftHole) {
+          // Hole is 3mm diameter, positioned at x1 + 2.5 (where x1 is left edge of pill)
+          // Text starts at x1 + 5 (2.5 + 1.5 + 1 = 5mm from left edge)
+          // So we need:
+          // - 5mm from left edge to text start
+          // - text width
+          // - basePadding from text end to right edge
+          leftPadding = 5; // 5mm from left edge to text start
+          rightPadding = basePadding; // Keep right padding as specified
         }
+        
+        // Calculate pill dimensions based on SCALED text dimensions
+        const textWidth = (max.x - min.x) * textMesh.scale.x;
+        const textHeight = (max.y - min.y) * textMesh.scale.y;
+        const width = textWidth + leftPadding + rightPadding;
+        const height = textHeight + basePadding * 2;
+        const radius = height / 2;
 
-                          // Create pill background
-          if (textGeo.boundingBox) {
-            const { min, max } = textGeo.boundingBox;
-            const basePadding = selectedProduct.background.padding;
-            
-                         // Calculate dimensions for the hole if product has left hole add-on
-             let leftPadding = basePadding;
-             let rightPadding = basePadding;
-             const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
-             
-             if (leftHole) {
-               // Hole is 3mm diameter, positioned at x1 + 2.5 (where x1 is left edge of pill)
-               // Text starts at x1 + 5 (2.5 + 1.5 + 1 = 5mm from left edge)
-               // So we need:
-               // - 5mm from left edge to text start
-               // - text width
-               // - basePadding from text end to right edge
-               leftPadding = 5; // 5mm from left edge to text start
-               rightPadding = basePadding; // Keep right padding as specified
-             }
-             
-             // Calculate pill dimensions
-             const textWidth = max.x - min.x;
-             const textHeight = max.y - min.y;
-             const width = textWidth + leftPadding + rightPadding;
-             const height = textHeight + basePadding * 2;
-             const radius = height / 2;
+        const shape = new THREE.Shape();
+        const x = -width / 2;
+        const y = -height / 2;
 
-          const shape = new THREE.Shape();
-          const x = -width / 2;
-          const y = -height / 2;
+        shape.moveTo(x + radius, y);
+        shape.lineTo(x + width - radius, y);
+        shape.quadraticCurveTo(x + width, y, x + width, y + radius);
+        shape.lineTo(x + width, y + height - radius);
+        shape.quadraticCurveTo(
+          x + width,
+          y + height,
+          x + width - radius,
+          y + height
+        );
+        shape.lineTo(x + radius, y + height);
+        shape.quadraticCurveTo(x, y + height, x, y + height - radius);
+        shape.lineTo(x, y + radius);
+        shape.quadraticCurveTo(x, y, x + radius, y);
 
-          shape.moveTo(x + radius, y);
-          shape.lineTo(x + width - radius, y);
-          shape.quadraticCurveTo(x + width, y, x + width, y + radius);
-          shape.lineTo(x + width, y + height - radius);
-          shape.quadraticCurveTo(
-            x + width,
-            y + height,
-            x + width - radius,
-            y + height
-          );
-          shape.lineTo(x + radius, y + height);
-          shape.quadraticCurveTo(x, y + height, x, y + height - radius);
-          shape.lineTo(x, y + radius);
-          shape.quadraticCurveTo(x, y, x + radius, y);
-
-                     const pillGeo = new THREE.ExtrudeGeometry(shape, {
-             depth: selectedProduct.background.thickness, // Use product thickness
-             bevelEnabled: false,
-           });
-           
-                       // Ensure the pill geometry is properly formed for 3D printing
-           // This helps prevent non-manifold edges
-           pillGeo.computeVertexNormals();
-           pillGeo.computeBoundingBox();
-           pillGeo.computeBoundingSphere();
-           
-           
-
-          // Create background material with color override (can be customized by user)
-          // The 3MF exporter will use whatever color is currently set on this material
-          const pillMat = new THREE.MeshPhongMaterial({ 
-            color: backgroundColor, // Use color override or theme color
-            name: 'BackgroundMaterial'
+        const pillGeo = new THREE.ExtrudeGeometry(shape, {
+          depth: selectedProduct.background.thickness, // Use product thickness
+          bevelEnabled: false,
+        });
+        
+        // Ensure the pill geometry is properly formed for 3D printing
+        // This helps prevent non-manifold edges
+        pillGeo.computeVertexNormals();
+        pillGeo.computeBoundingBox();
+        pillGeo.computeBoundingSphere();
+        
+        // Create background material with color override (can be customized by user)
+        // The 3MF exporter will use whatever color is currently set on this material
+        const pillMat = new THREE.MeshPhongMaterial({ 
+          color: backgroundColor, // Use color override or theme color
+          name: 'BackgroundMaterial'
+        });
+        // Ensure the material name is set for proper identification in the exporter
+        pillMat.name = 'BackgroundMaterial';
+        const pillMesh = new THREE.Mesh(pillGeo, pillMat);
+        
+        // Position the pill at the origin
+        // The pill goes from z=0 to z=2mm and is centered at the origin
+        pillMesh.position.set(0, 0, 0);
+        
+        pillMeshRef.current = pillMesh;
+        if (sceneRef.current) sceneRef.current.add(pillMesh);
+        
+        // Now position the text correctly based on the pill dimensions
+        if (leftHole) {
+          // Text should start at x1 + 5 (where x1 is the left edge of the pill)
+          // Since the pill is centered at origin, its left edge is at -width/2
+          const pillLeftEdge = -width / 2;
+          const textStartX = pillLeftEdge + 5; // x1 + 5
+          // Since TextGeometry origin is at its center, we need to offset by half the text width
+          const textCenterX = textStartX + (textWidth / 2);
+          textMesh.position.x = textCenterX;
+        }
+        
+        // Add visual representation of the hole if it exists
+        if (leftHole) {
+          // Create a 3mm diameter, 2mm high cylinder to represent the hole
+          const holeGeometry = new THREE.CylinderGeometry(1.5, 1.5, 2, 16); // radius=1.5mm, height=2mm
+          const holeMaterial = new THREE.MeshPhongMaterial({ 
+            color: 0x666666, // Dark grey to represent the hole
+            transparent: true,
+            opacity: 0.7,
+            name: 'HoleMaterial'
           });
-          // Ensure the material name is set for proper identification in the exporter
-          pillMat.name = 'BackgroundMaterial';
-          const pillMesh = new THREE.Mesh(pillGeo, pillMat);
+          const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
           
-                                 // Position the pill at the origin
-            // The pill goes from z=0 to z=2mm and is centered at the origin
-            pillMesh.position.set(0, 0, 0);
+          // Position the hole at x1 + 2.5 (where x1 is the left edge of the pill)
+          const holeX = -width / 2 + 2.5;
+          const holeY = 0; // Center in Y direction
+          const holeZ = 1; // Center in Z direction (pill goes from z=0 to z=2)
           
-                     
-
-                                pillMeshRef.current = pillMesh;
-           if (sceneRef.current) sceneRef.current.add(pillMesh);
-           
-           // Now position the text correctly based on the pill dimensions
-           if (leftHole) {
-             // Text should start at x1 + 5 (where x1 is the left edge of the pill)
-             // Since the pill is centered at origin, its left edge is at -width/2
-             const pillLeftEdge = -width / 2;
-             const textStartX = pillLeftEdge + 5; // x1 + 5
-             // Since TextGeometry origin is at its center, we need to offset by half the text width
-             const textCenterX = textStartX + (textWidth / 2);
-             textMesh.position.x = textCenterX;
-           }
-           
-           // Add visual representation of the hole if it exists
-           if (leftHole) {
-             // Create a 3mm diameter, 2mm high cylinder to represent the hole
-             const holeGeometry = new THREE.CylinderGeometry(1.5, 1.5, 2, 16); // radius=1.5mm, height=2mm
-             const holeMaterial = new THREE.MeshPhongMaterial({ 
-               color: 0x666666, // Dark grey to represent the hole
-               transparent: true,
-               opacity: 0.7,
-               name: 'HoleMaterial'
-             });
-             const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
-             
-             // Position the hole at x1 + 2.5 (where x1 is the left edge of the pill)
-             const holeX = -width / 2 + 2.5;
-             const holeY = 0; // Center in Y direction
-             const holeZ = 1; // Center in Z direction (pill goes from z=0 to z=2)
-             
-             holeMesh.position.set(holeX, holeY, holeZ);
-             
-             // Rotate the hole 90 degrees around X-axis so it goes through the pill horizontally
-             // This makes the cylinder lie flat (parallel to the pill's top/bottom faces)
-             holeMesh.rotation.x = Math.PI / 2;
-             
-             if (sceneRef.current) sceneRef.current.add(holeMesh);
-           }
-           
-
-         }
+          holeMesh.position.set(holeX, holeY, holeZ);
+          
+          // Rotate the hole 90 degrees around X-axis so it goes through the pill horizontally
+          // This makes the cylinder lie flat (parallel to the pill's top/bottom faces)
+          holeMesh.rotation.x = Math.PI / 2;
+          
+          if (sceneRef.current) sceneRef.current.add(holeMesh);
+        }
+      }
     });
   }, [text, selectedFont, textColor, backgroundColor, selectedProduct]);
+
+  // Calculate optimal scale factor based on product constraints
+  const calculateOptimalScale = (
+    currentWidth: number,
+    currentHeight: number,
+    minSize: [number, number],
+    targetSize: [number, number]
+  ): number => {
+    const [minX, minY] = minSize;
+    const [targetX, targetY] = targetSize;
+    
+    // Step 1: Scale X and Y such that X size equals target X size
+    let scaleFactor = targetX / currentWidth;
+    
+    // Step 2: Check Y constraints and adjust if necessary
+    const projectedY = currentHeight * scaleFactor;
+    
+    if (projectedY > targetY) {
+      // Y size is greater than target Y size - scale down until Y equals target Y
+      // This ensures Y constraint is met while keeping X as close to target as possible
+      scaleFactor = targetY / currentHeight;
+    } else if (projectedY < minY) {
+      // Y size is less than minimum Y size - scale up until Y equals min Y
+      // This ensures minimum Y requirement is met
+      scaleFactor = minY / currentHeight;
+    }
+    // else: Y size is already acceptable (between minY and targetY), no action needed
+    
+    // Ensure minimum X requirement is also met
+    const projectedX = currentWidth * scaleFactor;
+    if (projectedX < minX) {
+      // If scaling for Y constraints made X too small, scale up to meet minimum X
+      const minXScale = minX / currentWidth;
+      scaleFactor = Math.max(scaleFactor, minXScale);
+    }
+    
+    return scaleFactor;
+  };
 
   // Export scene to 3MF
   const export3MF = async () => {
@@ -499,6 +520,31 @@ const App: React.FC = () => {
           </div>
         </div>
         <button onClick={export3MF}>Download 3MF</button>
+        
+        {/* Debug information display */}
+        {selectedProduct && textMeshRef.current && (
+          <div style={{ 
+            background: '#f0f0f0', 
+            padding: '8px', 
+            borderRadius: '4px', 
+            fontSize: '12px',
+            fontFamily: 'monospace'
+          }}>
+            <div><strong>Product:</strong> {selectedProduct.name}</div>
+            <div><strong>Constraints:</strong> Min: [{selectedProduct.minSize[0]}mm, {selectedProduct.minSize[1]}mm] | Target: [{selectedProduct.targetSize[0]}mm, {selectedProduct.targetSize[1]}mm]</div>
+            {textMeshRef.current && (
+              <>
+                <div><strong>Text Scale:</strong> {textMeshRef.current.scale.x.toFixed(3)}x</div>
+                <div><strong>Final Text Size:</strong> {
+                  ((textMeshRef.current.geometry as any).boundingBox ? 
+                    `${((textMeshRef.current.geometry as any).boundingBox.max.x - (textMeshRef.current.geometry as any).boundingBox.min.x) * textMeshRef.current.scale.x}mm x ${((textMeshRef.current.geometry as any).boundingBox.max.y - (textMeshRef.current.geometry as any).boundingBox.min.y) * textMeshRef.current.scale.y}mm` 
+                    : 'Calculating...'
+                  )
+                }</div>
+              </>
+            )}
+          </div>
+        )}
       </div>
       <div ref={mountRef} style={{ flex: 1 }} />
     </div>
