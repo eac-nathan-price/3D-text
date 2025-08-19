@@ -13,11 +13,11 @@ import type { Preset } from './presets';
  * 
  * Color System:
  * - Presets provide initial colors for text and background
- * - Colors are applied to Three.js materials when presets are selected
+ * - Users can override preset colors using color pickers
+ * - Overridden colors are applied to Three.js materials in real-time
  * - The 3MF exporter automatically extracts colors from the current scene materials
- * - This allows for future user customization features where colors can be modified
- *   beyond what's defined in presets
- * - All color changes in the scene will be reflected in the exported 3MF file
+ * - This ensures the exported 3MF exactly matches what the user sees in the scene
+ * - All color changes (preset or custom) are reflected in the exported 3MF file
  */
 
 const fonts = ['Federation_Regular.json']; // add more JSON fonts here
@@ -27,6 +27,10 @@ const App: React.FC = () => {
   const [text, setText] = useState('STAR TREK');
   const [selectedFont, setSelectedFont] = useState(fonts[0]);
   const [selectedPreset, setSelectedPreset] = useState<Preset | null>(null);
+  
+  // Color override states - these will override preset colors
+  const [textColor, setTextColor] = useState<number>(0x0077ff); // Default blue
+  const [backgroundColor, setBackgroundColor] = useState<number>(0x000000); // Default black
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -52,7 +56,18 @@ const App: React.FC = () => {
     setText(preset.text);
     setSelectedFont(preset.font);
     setSelectedPreset(preset);
+    // Update color overrides to match preset colors
+    setTextColor(preset.color);
+    setBackgroundColor(preset.background);
   };
+
+  // Initialize with TNG Title preset
+  useEffect(() => {
+    const tngPreset = presets.find(p => p.name === "TNG Title");
+    if (tngPreset) {
+      applyPreset(tngPreset);
+    }
+  }, []);
 
   // Initialize scene
   useEffect(() => {
@@ -134,12 +149,12 @@ const App: React.FC = () => {
         console.log(`Text geometry created with ${textGeo.attributes.position.count} vertices`);
       }
 
-      // Create text material with preset color (can be customized later)
-      // The 3MF exporter will use whatever color is currently set on this material
-      const textMat = new THREE.MeshPhongMaterial({ 
-        color: selectedPreset?.color || 0x0077ff, // Use preset color or default blue
-        name: 'TextMaterial'
-      });
+              // Create text material with color override (can be customized by user)
+        // The 3MF exporter will use whatever color is currently set on this material
+        const textMat = new THREE.MeshPhongMaterial({ 
+          color: textColor, // Use color override or preset color
+          name: 'TextMaterial'
+        });
       // Ensure the material name is set for proper identification in the exporter
       textMat.name = 'TextMaterial';
       const textMesh = new THREE.Mesh(textGeo, textMat);
@@ -189,10 +204,10 @@ const App: React.FC = () => {
         pillGeo.computeBoundingBox();
         pillGeo.computeBoundingSphere();
 
-        // Create background material with preset color (can be customized later)
+        // Create background material with color override (can be customized by user)
         // The 3MF exporter will use whatever color is currently set on this material
         const pillMat = new THREE.MeshPhongMaterial({ 
-          color: selectedPreset?.background || 0x000000, // Use preset background or default black
+          color: backgroundColor, // Use color override or preset color
           name: 'BackgroundMaterial'
         });
         // Ensure the material name is set for proper identification in the exporter
@@ -204,7 +219,7 @@ const App: React.FC = () => {
         if (sceneRef.current) sceneRef.current.add(pillMesh);
       }
     });
-  }, [text, selectedFont, selectedPreset]);
+  }, [text, selectedFont, textColor, backgroundColor]);
 
   // Export scene to 3MF
   const export3MF = async () => {
@@ -235,7 +250,7 @@ const App: React.FC = () => {
       console.log('===========================');
 
       // The exporter will automatically use the current colors of all objects in the scene
-      // This includes any custom colors set by the user beyond the preset defaults
+      // This includes any custom colors set by the user using the color pickers
       const exporter = new ThreeMFExporter(sceneRef.current);
       const blob = await exporter.export();
       const url = URL.createObjectURL(blob);
@@ -282,7 +297,6 @@ const App: React.FC = () => {
             }}
             style={{ minWidth: '200px' }}
           >
-            <option value="">Select a preset...</option>
             {getPresetGroups().map((group) => (
               <optgroup key={group.tag} label={group.tag}>
                 {group.presets.map((preset) => (
@@ -294,19 +308,7 @@ const App: React.FC = () => {
             ))}
           </select>
         </div>
-        <div>
-          <label>Font: </label>
-          <select
-            value={selectedFont}
-            onChange={(e) => setSelectedFont(e.target.value)}
-          >
-            {fonts.map((f) => (
-              <option key={f} value={f}>
-                {f.replace('.json', '')}
-              </option>
-            ))}
-          </select>
-        </div>
+        
         <div>
           <label>Text: </label>
           <input
@@ -314,6 +316,24 @@ const App: React.FC = () => {
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
+        </div>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <label>Text Color:</label>
+            <input
+              type="color"
+              value={`#${textColor.toString(16).padStart(6, '0')}`}
+              onChange={(e) => setTextColor(parseInt(e.target.value.slice(1), 16))}
+            />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <label>Background Color:</label>
+            <input
+              type="color"
+              value={`#${backgroundColor.toString(16).padStart(6, '0')}`}
+              onChange={(e) => setBackgroundColor(parseInt(e.target.value.slice(1), 16))}
+            />
+          </div>
         </div>
         <button onClick={export3MF}>Download 3MF</button>
       </div>
