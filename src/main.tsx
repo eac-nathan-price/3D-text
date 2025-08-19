@@ -165,9 +165,17 @@ const App: React.FC = () => {
       if (holeMeshRef.current && sceneRef.current) sceneRef.current.remove(holeMeshRef.current);
 
       // Create text geometry
+      // Use a more reasonable initial text size that's closer to the target dimensions
+      // This prevents the need for extreme scaling
+      const initialTextSize = Math.min(selectedProduct.targetSize[0] / 3, selectedProduct.targetSize[1] / 2);
+      console.log('Initial text size calculated:', {
+        targetX: selectedProduct.targetSize[0],
+        targetY: selectedProduct.targetSize[1],
+        initialTextSize: initialTextSize.toFixed(2) + 'mm'
+      });
       const textGeo = new TextGeometry(text, {
         font,
-        size: 30,
+        size: initialTextSize,
         depth: selectedProduct.text.thickness + selectedProduct.text.overlap, // Use product thickness + overlap
         curveSegments: 12,
         bevelEnabled: false,
@@ -230,6 +238,11 @@ const App: React.FC = () => {
           }
         });
         
+        // Check if text dimensions are reasonable for the product
+        if (currentWidth > selectedProduct.targetSize[0] * 2) {
+          console.warn('Text is extremely wide! Consider using shorter text or adjusting product constraints.');
+        }
+        
         // Apply the sizing logic according to the specified criteria
         const scaleFactor = calculateOptimalScale(
           currentWidth,
@@ -243,6 +256,12 @@ const App: React.FC = () => {
         textMesh.scale.set(scaleFactor, scaleFactor, 1);
         
         console.log(`Text sizing: Current(${currentWidth.toFixed(2)}mm x ${currentHeight.toFixed(2)}mm), Scale: ${scaleFactor.toFixed(3)}, Final(${(currentWidth * scaleFactor).toFixed(2)}mm x ${(currentHeight * scaleFactor).toFixed(2)}mm)`);
+        console.log('Scale factor breakdown:', {
+          targetXScale: selectedProduct.targetSize[0] / currentWidth,
+          targetYScale: selectedProduct.targetSize[1] / currentHeight,
+          minYScale: selectedProduct.minSize[1] / currentHeight,
+          finalScale: scaleFactor
+        });
       }
 
       // Create pill background
