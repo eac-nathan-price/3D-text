@@ -224,8 +224,8 @@ const App: React.FC = () => {
           }
           
           // Check if scaling to maximum is possible without exceeding either dimension
-          const maxScaleX = selectedProduct.maxSize[0] / currentWidth;
-          const maxScaleY = selectedProduct.maxSize[1] / currentHeight;
+          const maxScaleX = selectedProduct.targetSize[0] / currentWidth;
+          const maxScaleY = selectedProduct.targetSize[1] / currentHeight;
           const maxPossibleScale = Math.min(maxScaleX, maxScaleY);
           
           // Apply the larger of the two scales (minimum requirement vs maximum possible)

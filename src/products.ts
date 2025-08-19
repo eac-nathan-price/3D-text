@@ -26,7 +26,7 @@ export interface TextConfig {
 export interface Product {
   name: string;
   minSize: [number, number]; // [Xmm, Ymm]
-  maxSize: [number, number]; // [Xmm, Ymm]
+  targetSize: [number, number]; // [Xmm, Ymm]
   background: BackgroundConfig;
   text: TextConfig;
   addOns: AddOn[];
@@ -36,7 +36,7 @@ export const products: Product[] = [
   {
     name: "Keychain",
     minSize: [36, 12],
-    maxSize: [76.2, 25.4],
+    targetSize: [76.2, 25.4],
     background: {
       thickness: 2,
       shape: "pill",
