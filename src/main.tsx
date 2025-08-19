@@ -35,6 +35,12 @@ const App: React.FC = () => {
   // Color override states - these will override theme colors
   const [textColor, setTextColor] = useState<number>(0x0077ff); // Default blue
   const [backgroundColor, setBackgroundColor] = useState<number>(0x000000); // Default black
+  const [textProtrusion, setTextProtrusion] = useState<{
+    left: boolean;
+    right: boolean;
+    top: boolean;
+    bottom: boolean;
+  } | null>(null);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -42,6 +48,7 @@ const App: React.FC = () => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const textMeshRef = useRef<THREE.Mesh | null>(null);
   const pillMeshRef = useRef<THREE.Mesh | null>(null);
+  const holeMeshRef = useRef<THREE.Mesh | null>(null);
 
   // Get unique tags and group themes by tag
   const getThemeGroups = () => {
@@ -63,6 +70,8 @@ const App: React.FC = () => {
     // Update color overrides to match theme colors
     setTextColor(theme.color);
     setBackgroundColor(theme.background);
+    // Reset protrusion state when theme changes
+    setTextProtrusion(null);
   };
 
   // Apply product when selected
@@ -153,6 +162,7 @@ const App: React.FC = () => {
       // Remove old meshes
       if (textMeshRef.current && sceneRef.current) sceneRef.current.remove(textMeshRef.current);
       if (pillMeshRef.current && sceneRef.current) sceneRef.current.remove(pillMeshRef.current);
+      if (holeMeshRef.current && sceneRef.current) sceneRef.current.remove(holeMeshRef.current);
 
       // Create text geometry
       const textGeo = new TextGeometry(text, {
@@ -312,8 +322,76 @@ const App: React.FC = () => {
           textMesh.position.x = textCenterX;
         }
         
+        // Check if text protrudes beyond the pill's rounded corners
+        const checkTextProtrusion = () => {
+          if (!textMeshRef.current || !pillMeshRef.current) return;
+          
+          const textBBox = (textMeshRef.current.geometry as any).boundingBox;
+          if (!textBBox) return;
+          
+          // Get the scaled text dimensions
+          const scaledTextWidth = (textBBox.max.x - textBBox.min.x) * textMeshRef.current.scale.x;
+          const scaledTextHeight = (textBBox.max.y - textBBox.min.y) * textMeshRef.current.scale.y;
+          
+          // Get text position relative to pill center
+          const textLeft = textMeshRef.current.position.x - (scaledTextWidth / 2);
+          const textRight = textMeshRef.current.position.x + (scaledTextWidth / 2);
+          const textTop = textMeshRef.current.position.y + (scaledTextHeight / 2);
+          const textBottom = textMeshRef.current.position.y - (scaledTextHeight / 2);
+          
+          // Pill boundaries (pill is centered at origin)
+          const pillLeft = -width / 2;
+          const pillRight = width / 2;
+          const pillTop = height / 2;
+          const pillBottom = -height / 2;
+          
+          // Check for protrusion beyond rounded corners
+          const cornerRadius = height / 2; // Pill corner radius
+          const protrusionLeft = textLeft < (pillLeft + cornerRadius);
+          const protrusionRight = textRight > (pillRight - cornerRadius);
+          const protrusionTop = textTop > (pillTop - cornerRadius);
+          const protrusionBottom = textBottom < (pillBottom + cornerRadius);
+          
+          // Update the protrusion state
+          setTextProtrusion({
+            left: protrusionLeft,
+            right: protrusionRight,
+            top: protrusionTop,
+            bottom: protrusionBottom
+          });
+          
+          if (protrusionLeft || protrusionRight || protrusionTop || protrusionBottom) {
+            console.warn('Text protrudes beyond pill rounded corners!', {
+              protrusionLeft,
+              protrusionRight,
+              protrusionTop,
+              protrusionBottom,
+              textBounds: { left: textLeft, right: textRight, top: textTop, bottom: textBottom },
+              pillBounds: { left: pillLeft, right: pillRight, top: pillTop, bottom: pillBottom }
+            });
+            
+            // Visual indicator: change text color to red for protrusion
+            if (textMeshRef.current.material instanceof THREE.MeshPhongMaterial) {
+              textMeshRef.current.material.color.setHex(0xff0000); // Red for protrusion
+            }
+          } else {
+            // Reset to normal color if no protrusion
+            if (textMeshRef.current.material instanceof THREE.MeshPhongMaterial) {
+              textMeshRef.current.material.color.setHex(textColor);
+            }
+          }
+        };
+        
+        // Check for protrusion after positioning
+        checkTextProtrusion();
+        
         // Add visual representation of the hole if it exists
         if (leftHole) {
+          // Remove existing hole if it exists
+          if (holeMeshRef.current && sceneRef.current) {
+            sceneRef.current.remove(holeMeshRef.current);
+          }
+          
           // Create a 3mm diameter, 2mm high cylinder to represent the hole
           const holeGeometry = new THREE.CylinderGeometry(1.5, 1.5, 2, 16); // radius=1.5mm, height=2mm
           const holeMaterial = new THREE.MeshPhongMaterial({ 
@@ -335,6 +413,7 @@ const App: React.FC = () => {
           // This makes the cylinder lie flat (parallel to the pill's top/bottom faces)
           holeMesh.rotation.x = Math.PI / 2;
           
+          holeMeshRef.current = holeMesh; // Store the hole mesh
           if (sceneRef.current) sceneRef.current.add(holeMesh);
         }
       }
@@ -377,6 +456,62 @@ const App: React.FC = () => {
     }
     
     return scaleFactor;
+  };
+
+  // Manual function to check for text protrusion (can be called from UI)
+  const checkTextProtrusionManually = () => {
+    if (!textMeshRef.current || !pillMeshRef.current) {
+      console.log('No text or pill mesh available for protrusion check');
+      return;
+    }
+    
+    const textBBox = (textMeshRef.current.geometry as any).boundingBox;
+    if (!textBBox) {
+      console.log('No bounding box available for text geometry');
+      return;
+    }
+    
+    // Get the scaled text dimensions
+    const scaledTextWidth = (textBBox.max.x - textBBox.min.x) * textMeshRef.current.scale.x;
+    const scaledTextHeight = (textBBox.max.y - textBBox.min.y) * textMeshRef.current.scale.y;
+    
+    // Get text position relative to pill center
+    const textLeft = textMeshRef.current.position.x - (scaledTextWidth / 2);
+    const textRight = textMeshRef.current.position.x + (scaledTextWidth / 2);
+    const textTop = textMeshRef.current.position.y + (scaledTextHeight / 2);
+    const textBottom = textMeshRef.current.position.y - (scaledTextHeight / 2);
+    
+    // Get pill dimensions from the pill mesh
+    const pillBBox = (pillMeshRef.current.geometry as any).boundingBox;
+    if (!pillBBox) {
+      console.log('No bounding box available for pill geometry');
+      return;
+    }
+    
+    const pillWidth = pillBBox.max.x - pillBBox.min.x;
+    const pillHeight = pillBBox.max.y - pillBBox.min.y;
+    
+    // Pill boundaries (pill is centered at origin)
+    const pillLeft = -pillWidth / 2;
+    const pillRight = pillWidth / 2;
+    const pillTop = pillHeight / 2;
+    const pillBottom = -pillHeight / 2;
+    
+    // Check for protrusion beyond rounded corners
+    const cornerRadius = pillHeight / 2; // Pill corner radius
+    const protrusionLeft = textLeft < (pillLeft + cornerRadius);
+    const protrusionRight = textRight > (pillRight - cornerRadius);
+    const protrusionTop = textTop > (pillTop - cornerRadius);
+    const protrusionBottom = textBottom < (pillBottom + cornerRadius);
+    
+    console.log('Manual protrusion check:', {
+      textBounds: { left: textLeft, right: textRight, top: textTop, bottom: textBottom },
+      pillBounds: { left: pillLeft, right: pillRight, top: pillTop, bottom: pillBottom },
+      cornerRadius,
+      protrusion: { left: protrusionLeft, right: protrusionRight, top: protrusionTop, bottom: protrusionBottom }
+    });
+    
+    return { protrusionLeft, protrusionRight, protrusionTop, protrusionBottom };
   };
 
   // Export scene to 3MF
@@ -498,7 +633,11 @@ const App: React.FC = () => {
           <input
             type="text"
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              // Reset protrusion state when text changes
+              setTextProtrusion(null);
+            }}
           />
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -541,6 +680,42 @@ const App: React.FC = () => {
                     : 'Calculating...'
                   )
                 }</div>
+                {textProtrusion && (
+                  <div style={{ 
+                    color: (textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) ? '#ff0000' : '#00aa00',
+                    fontWeight: 'bold'
+                  }}>
+                    <strong>Protrusion:</strong> {
+                      (textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) 
+                        ? `⚠️ Text extends beyond pill corners` 
+                        : `✅ Text fits within pill bounds`
+                    }
+                    {(textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) && (
+                      <div style={{ fontSize: '10px', marginLeft: '8px' }}>
+                        {textProtrusion.left && '← Left '}
+                        {textProtrusion.right && '→ Right '}
+                        {textProtrusion.top && '↑ Top '}
+                        {textProtrusion.bottom && '↓ Bottom '}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <button 
+                  onClick={checkTextProtrusionManually}
+                  style={{ 
+                    marginTop: '4px', 
+                    padding: '2px 6px', 
+                    fontSize: '10px',
+                    background: '#0077ff',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '3px',
+                    cursor: 'pointer'
+                  }}
+                  title="Manually check for text protrusion beyond pill corners"
+                >
+                  Check Protrusion
+                </button>
               </>
             )}
           </div>
