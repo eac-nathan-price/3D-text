@@ -70,134 +70,11 @@ const App: React.FC = () => {
     setSelectedProduct(product);
   };
 
-  // Add debug wireframes to visualize Z positions
-  const addDebugWireframes = (scene: THREE.Scene, product: Product) => {
-    // Remove any existing debug wireframes
-    scene.children.forEach(child => {
-      if (child.name && child.name.startsWith('debug_')) {
-        scene.remove(child);
-      }
-    });
 
-    // Create red wireframe at z=0
-    const redGeometry = new THREE.PlaneGeometry(100, 100);
-    const redMaterial = new THREE.MeshBasicMaterial({ 
-      color: 0xff0000, 
-      wireframe: true, 
-      transparent: true, 
-      opacity: 0.5 
-    });
-    const redPlane = new THREE.Mesh(redGeometry, redMaterial);
-    redPlane.position.z = 0;
-    redPlane.name = 'debug_z0';
-    scene.add(redPlane);
 
-    // Create green wireframe at z=2 (pill top surface)
-    const greenGeometry = new THREE.PlaneGeometry(100, 100);
-    const greenMaterial = new THREE.MeshBasicMaterial({ 
-      color: 0x00ff00, 
-      wireframe: true, 
-      transparent: true, 
-      opacity: 0.5 
-    });
-    const greenPlane = new THREE.Mesh(greenGeometry, greenMaterial);
-    greenPlane.position.z = product.background.thickness; // z=2mm
-    greenPlane.name = 'debug_z2';
-    scene.add(greenPlane);
 
-    // Create blue wireframe at z=3 (text top surface)
-    const blueGeometry = new THREE.PlaneGeometry(100, 100);
-    const blueMaterial = new THREE.MeshBasicMaterial({ 
-      color: 0x0000ff, 
-      wireframe: true, 
-      transparent: true, 
-      opacity: 0.5 
-    });
-    const bluePlane = new THREE.Mesh(blueGeometry, blueMaterial);
-    bluePlane.position.z = product.background.thickness + product.text.thickness; // z=3mm
-    bluePlane.name = 'debug_z3';
-    scene.add(bluePlane);
 
-    console.log('Debug wireframes added:');
-    console.log(`- Red plane at z=0mm (pill bottom)`);
-    console.log(`- Green plane at z=${product.background.thickness}mm (pill top)`);
-    console.log(`- Blue plane at z=${product.background.thickness + product.text.thickness}mm (text top)`);
-  };
 
-  // Debug function to log actual mesh bounding boxes
-  const logMeshBoundingBoxes = (textMesh: THREE.Mesh, pillMesh: THREE.Mesh) => {
-    if (textMesh.geometry.boundingBox) {
-      const textBox = textMesh.geometry.boundingBox;
-      const textWorldMin = new THREE.Vector3();
-      const textWorldMax = new THREE.Vector3();
-      textBox.getCenter(textWorldMin);
-      textBox.getSize(textWorldMax);
-      
-      // Transform to world coordinates
-      textMesh.localToWorld(textWorldMin);
-      textMesh.localToWorld(textWorldMax);
-      
-      console.log('=== ACTUAL MESH BOUNDING BOXES ===');
-      console.log(`Text mesh world bounds: z=${textWorldMin.z.toFixed(3)}mm to ${textWorldMax.z.toFixed(3)}mm`);
-      console.log(`Text mesh position.z: ${textMesh.position.z.toFixed(3)}mm`);
-      console.log(`Text mesh scale: ${textMesh.scale.z.toFixed(3)}`);
-    }
-    
-    if (pillMesh.geometry.boundingBox) {
-      const pillBox = pillMesh.geometry.boundingBox;
-      const pillWorldMin = new THREE.Vector3();
-      const pillWorldMax = new THREE.Vector3();
-      pillBox.getCenter(pillWorldMin);
-      pillBox.getSize(pillWorldMax);
-      
-      // Transform to world coordinates
-      pillMesh.localToWorld(pillWorldMin);
-      pillMesh.localToWorld(pillWorldMax);
-      
-      console.log(`Pill mesh world bounds: z=${pillWorldMin.z.toFixed(3)}mm to ${pillWorldMax.z.toFixed(3)}mm`);
-      console.log(`Pill mesh position.z: ${pillMesh.position.z.toFixed(3)}mm`);
-      console.log(`Pill mesh scale: ${pillMesh.scale.z.toFixed(3)}`);
-      console.log('=====================================');
-    }
-  };
-
-  // Add origin markers to visualize where each mesh thinks its center is
-  const addOriginMarkers = (scene: THREE.Scene, textMesh: THREE.Mesh, pillMesh: THREE.Mesh) => {
-    // Remove any existing origin markers
-    scene.children.forEach(child => {
-      if (child.name && child.name.startsWith('origin_')) {
-        scene.remove(child);
-      }
-    });
-
-    // Create a small red sphere at text mesh origin (should be at textMesh.position)
-    const textOriginGeometry = new THREE.SphereGeometry(2, 8, 6);
-    const textOriginMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-    const textOriginMarker = new THREE.Mesh(textOriginGeometry, textOriginMaterial);
-    textOriginMarker.position.copy(textMesh.position);
-    textOriginMarker.name = 'origin_text';
-    scene.add(textOriginMarker);
-
-         // Create a small green sphere at pill mesh origin (should be at pillMesh.position)
-     const pillOriginGeometry = new THREE.SphereGeometry(2, 8, 6);
-     const pillOriginMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-     const pillOriginMarker = new THREE.Mesh(pillOriginGeometry, pillOriginMaterial);
-     pillOriginMarker.position.copy(pillMesh.position);
-     pillOriginMarker.name = 'origin_pill';
-     scene.add(pillOriginMarker);
-     
-     // Also add a marker at the pill's geometric center for reference
-     const pillCenterGeometry = new THREE.SphereGeometry(1.5, 8, 6);
-     const pillCenterMaterial = new THREE.MeshBasicMaterial({ color: 0x00aa00 });
-     const pillCenterMarker = new THREE.Mesh(pillCenterGeometry, pillCenterMaterial);
-     pillCenterMarker.position.set(pillMesh.position.x, pillMesh.position.y, pillMesh.position.z + (selectedProduct!.background.thickness / 2));
-     pillCenterMarker.name = 'pill_center';
-     scene.add(pillCenterMarker);
-
-    console.log('Origin markers added:');
-    console.log(`- Red sphere at text mesh origin: ${textMesh.position.x.toFixed(3)}, ${textMesh.position.y.toFixed(3)}, ${textMesh.position.z.toFixed(3)}`);
-    console.log(`- Green sphere at pill mesh origin: ${pillMesh.position.x.toFixed(3)}, ${pillMesh.position.y.toFixed(3)}, ${pillMesh.position.z.toFixed(3)}`);
-  };
 
   // Initialize with TNG Title theme
   useEffect(() => {
@@ -286,32 +163,18 @@ const App: React.FC = () => {
          bevelEnabled: false,
        });
        
-       console.log(`TextGeometry created with depth: ${selectedProduct.text.thickness + selectedProduct.text.overlap}mm`);
+       
              textGeo.computeBoundingBox();
        textGeo.center();
        
-       if (textGeo.boundingBox) {
-         console.log(`TextGeometry boundingBox BEFORE .center(): z=${textGeo.boundingBox.min.z.toFixed(3)}mm to ${textGeo.boundingBox.max.z.toFixed(3)}mm`);
-         console.log(`TextGeometry center BEFORE .center(): z=${((textGeo.boundingBox.min.z + textGeo.boundingBox.max.z) / 2).toFixed(3)}mm`);
-       }
-       
-       textGeo.center();
-       
-       if (textGeo.boundingBox) {
-         console.log(`TextGeometry boundingBox AFTER .center(): z=${textGeo.boundingBox.min.z.toFixed(3)}mm to ${textGeo.boundingBox.max.z.toFixed(3)}mm`);
-         console.log(`TextGeometry center AFTER .center(): z=${((textGeo.boundingBox.min.z + textGeo.boundingBox.max.z) / 2).toFixed(3)}mm`);
-       }
+               textGeo.center();
       
       // Ensure the geometry is properly formed for 3D printing
       // This helps prevent non-manifold edges
       textGeo.computeVertexNormals();
       textGeo.computeBoundingSphere();
       
-      // For 3D printing, ensure the geometry is watertight
-      // TextGeometry should already be watertight, but let's verify
-      if (textGeo.attributes.position && textGeo.attributes.position.count > 0) {
-        console.log(`Text geometry created with ${textGeo.attributes.position.count} vertices`);
-      }
+      
 
               // Create text material with color override (can be customized by user)
         // The 3MF exporter will use whatever color is currently set on this material
@@ -339,13 +202,7 @@ const App: React.FC = () => {
          const textCenterZ = textStartZ + (totalTextDepth / 2); // 1.95mm + 1.05mm/2 = 2.475mm
          textMesh.position.z = textCenterZ;
          
-         console.log(`Text positioning: background thickness=${backgroundThickness}mm, text thickness=${textThickness}mm, overlap=${overlap}mm`);
-         console.log(`Total text depth: ${totalTextDepth}mm`);
-         console.log(`Background Z range: 0mm to ${backgroundThickness}mm`);
-         console.log(`Text Z range: ${textStartZ.toFixed(3)}mm to ${(textStartZ + totalTextDepth).toFixed(3)}mm, center at ${textCenterZ.toFixed(3)}mm`);
-         console.log(`Text extends ${textThickness}mm above background surface`);
-         console.log(`Text actual Z range: ${textMesh.position.z - (totalTextDepth / 2)}mm to ${textMesh.position.z + (totalTextDepth / 2)}mm`);
-         console.log(`Text starts at z=${textStartZ}mm and ends at z=${(textStartZ + totalTextDepth).toFixed(3)}mm`);
+         
         }
       textMeshRef.current = textMesh;
       if (sceneRef.current) sceneRef.current.add(textMesh);
@@ -377,9 +234,7 @@ const App: React.FC = () => {
           // Apply uniform scaling to maintain aspect ratio
           textMesh.scale.set(scaleFactor, scaleFactor, 1);
           
-          console.log(`Text scaled by factor ${scaleFactor.toFixed(3)} to meet product constraints`);
-          console.log(`Original size: ${currentWidth.toFixed(1)} x ${currentHeight.toFixed(1)}mm`);
-          console.log(`Scaled size: ${(currentWidth * scaleFactor).toFixed(1)} x ${(currentHeight * scaleFactor).toFixed(1)}mm`);
+          
         }
 
         // Create pill background
@@ -430,48 +285,11 @@ const App: React.FC = () => {
            // To center this at z=1, we need to position it at z=1
            // But first, let's verify the geometry bounds
            
-           // Debug: Check the actual geometry bounds before positioning
-           pillGeo.computeBoundingBox();
-           if (pillGeo.boundingBox) {
-             console.log(`ExtrudeGeometry BEFORE positioning - bounds: z=${pillGeo.boundingBox.min.z.toFixed(3)}mm to ${pillGeo.boundingBox.max.z.toFixed(3)}mm`);
-             console.log(`ExtrudeGeometry BEFORE positioning - center: z=${((pillGeo.boundingBox.min.z + pillGeo.boundingBox.max.z) / 2).toFixed(3)}mm`);
-             console.log(`ExtrudeGeometry BEFORE positioning - depth from bounds: ${(pillGeo.boundingBox.max.z - pillGeo.boundingBox.min.z).toFixed(3)}mm`);
-           }
            
-           // Test theory: Create a simple test geometry to verify ExtrudeGeometry behavior
-           const testShape = new THREE.Shape();
-           testShape.moveTo(-10, -10);
-           testShape.lineTo(10, -10);
-           testShape.lineTo(10, 10);
-           testShape.lineTo(-10, 10);
-           testShape.lineTo(-10, -10);
            
-           const testGeo = new THREE.ExtrudeGeometry(testShape, {
-             depth: 2,
-             bevelEnabled: false,
-           });
-           testGeo.computeBoundingBox();
-           if (testGeo.boundingBox) {
-             console.log(`TEST ExtrudeGeometry depth=2 - bounds: z=${testGeo.boundingBox.min.z.toFixed(3)}mm to ${testGeo.boundingBox.max.z.toFixed(3)}mm`);
-             console.log(`TEST ExtrudeGeometry depth=2 - center: z=${((testGeo.boundingBox.min.z + testGeo.boundingBox.max.z) / 2).toFixed(3)}mm`);
-           }
            
-           // Add test geometry to scene for visual verification
-           const testMat = new THREE.MeshBasicMaterial({ color: 0xffff00, wireframe: true });
-           const testMesh = new THREE.Mesh(testGeo, testMat);
-           testMesh.position.set(50, 0, 0); // Position to the right of the main scene
-           testMesh.name = 'test_extrude';
-           if (sceneRef.current) sceneRef.current.add(testMesh);
-           
-           // Add test marker at world origin (z=0) for reference
-           const originGeometry = new THREE.SphereGeometry(3, 8, 6);
-           const originMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-           const originMarker = new THREE.Mesh(originGeometry, originMaterial);
-           originMarker.position.set(0, 0, 0);
-           originMarker.name = 'world_origin';
-           if (sceneRef.current) sceneRef.current.add(originMarker);
           
-          console.log(`ExtrudeGeometry created with depth: ${selectedProduct.background.thickness}mm`);
+          
           
                      // Ensure the pill geometry is properly formed for 3D printing
            // This helps prevent non-manifold edges
@@ -479,11 +297,7 @@ const App: React.FC = () => {
            pillGeo.computeBoundingBox();
            pillGeo.computeBoundingSphere();
            
-           if (pillGeo.boundingBox) {
-             console.log(`ExtrudeGeometry boundingBox: z=${pillGeo.boundingBox.min.z.toFixed(3)}mm to ${pillGeo.boundingBox.max.z.toFixed(3)}mm`);
-             console.log(`ExtrudeGeometry center: z=${((pillGeo.boundingBox.min.z + pillGeo.boundingBox.max.z) / 2).toFixed(3)}mm`);
-             console.log(`ExtrudeGeometry depth from boundingBox: ${(pillGeo.boundingBox.max.z - pillGeo.boundingBox.min.z).toFixed(3)}mm`);
-           }
+           
 
           // Create background material with color override (can be customized by user)
           // The 3MF exporter will use whatever color is currently set on this material
@@ -500,22 +314,7 @@ const App: React.FC = () => {
            // ExtrudeGeometry creates geometry from z=0 to z=depth, so position at z=0 to get z=0 to z=2mm range
            pillMesh.position.z = 0; // Position at z=0 to get z=0 to z=2mm range
            
-           // Debug: Check the actual geometry bounds after positioning
-           if (pillGeo.boundingBox) {
-             const pillBox = pillGeo.boundingBox;
-             const pillWorldMin = new THREE.Vector3();
-             const pillWorldMax = new THREE.Vector3();
-             pillBox.getCenter(pillWorldMin);
-             pillBox.getSize(pillWorldMax);
-             
-             // Transform to world coordinates
-             pillMesh.localToWorld(pillWorldMin);
-             pillMesh.localToWorld(pillWorldMax);
-             
-             console.log(`ExtrudeGeometry AFTER positioning - world bounds: z=${pillWorldMin.z.toFixed(3)}mm to ${pillWorldMax.z.toFixed(3)}mm`);
-             console.log(`ExtrudeGeometry AFTER positioning - world center: z=${((pillWorldMin.z + pillWorldMax.z) / 2).toFixed(3)}mm`);
-             console.log(`ExtrudeGeometry AFTER positioning - mesh position.z: ${pillMesh.position.z.toFixed(3)}mm`);
-           }
+           
           
           // Adjust X position to account for left padding (move right to center text)
           if (leftHole) {
@@ -523,39 +322,16 @@ const App: React.FC = () => {
             pillMesh.position.x = leftPadding / 2; // Move right by half the extra padding
           }
           
-                     console.log(`Pill positioning: thickness=${selectedProduct.background.thickness}mm, positioned at z=${pillMesh.position.z}mm`);
-           console.log(`Pill Z range: 0mm to ${selectedProduct.background.thickness}mm`);
-           console.log(`Pill actual Z range: ${pillMesh.position.z}mm to ${pillMesh.position.z + selectedProduct.background.thickness}mm`);
+                     
 
           pillMeshRef.current = pillMesh;
           if (sceneRef.current) sceneRef.current.add(pillMesh);
           
-          // Debug: Log final positions of both meshes
-          console.log('=== Final Mesh Positions ===');
-          console.log(`Text mesh: position.z = ${textMesh.position.z.toFixed(3)}mm`);
-          console.log(`Pill mesh: position.z = ${pillMesh.position.z.toFixed(3)}mm`);
-          console.log(`Text mesh scale: ${textMesh.scale.x.toFixed(3)} x ${textMesh.scale.y.toFixed(3)} x ${textMesh.scale.z.toFixed(3)}`);
           
-          // Additional debugging for transform origin verification
-          const textThickness = selectedProduct.text.thickness;
-          const overlap = selectedProduct.text.overlap;
-          const totalTextDepth = textThickness + overlap;
-          const backgroundThickness = selectedProduct.background.thickness;
           
-          console.log(`Expected text Z range: ${(textMesh.position.z - totalTextDepth/2).toFixed(3)}mm to ${(textMesh.position.z + totalTextDepth/2).toFixed(3)}mm`);
-                     console.log(`Expected pill Z range: ${pillMesh.position.z.toFixed(3)}mm to ${(pillMesh.position.z + backgroundThickness).toFixed(3)}mm`);
-          console.log(`Text should extend ${textThickness}mm above pill surface (z=${backgroundThickness}mm)`);
-          console.log(`Actual text extension above pill: ${(textMesh.position.z + totalTextDepth/2 - backgroundThickness).toFixed(3)}mm`);
-          console.log('===========================');
           
-          // Add debug wireframes to visualize Z positions
-          addDebugWireframes(sceneRef.current!, selectedProduct);
           
-          // Log actual mesh bounding boxes
-          logMeshBoundingBoxes(textMesh, pillMesh);
-          
-          // Add origin markers
-          addOriginMarkers(sceneRef.current!, textMesh, pillMesh);
+
         }
     });
   }, [text, selectedFont, textColor, backgroundColor, selectedProduct]);
@@ -565,28 +341,7 @@ const App: React.FC = () => {
     if (!sceneRef.current) return;
 
     try {
-      // Log current colors in the scene for debugging
-      console.log('=== Current Scene Colors ===');
-      const sceneColors: Array<{name: string, color: string, material: string}> = [];
       
-      sceneRef.current.traverse((object) => {
-        if (object instanceof THREE.Mesh && object.material) {
-          const material = Array.isArray(object.material) ? object.material[0] : object.material;
-          if (material instanceof THREE.MeshPhongMaterial && material.color) {
-            const colorHex = '#' + material.color.getHexString().toUpperCase();
-            const meshInfo = {
-              name: object.name || 'Unnamed Mesh',
-              color: colorHex,
-              material: material.name || 'Unnamed Material'
-            };
-            sceneColors.push(meshInfo);
-            console.log(`${meshInfo.name}: ${colorHex} (Material: ${meshInfo.material})`);
-          }
-        }
-      });
-      
-      console.log('Scene Colors Summary:', sceneColors);
-      console.log('===========================');
 
       // The exporter will automatically use the current colors of all objects in the scene
       // This includes any custom colors set by the user using the color pickers
