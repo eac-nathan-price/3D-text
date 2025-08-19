@@ -7,6 +7,8 @@ import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { ThreeMFExporter } from './ThreeMFExporter';
 import { themes } from './themes';
 import type { Theme } from './themes';
+import { products } from './products';
+import type { Product } from './products';
 
 /**
  * 3D Text Scene with 3MF Export Capability
@@ -28,6 +30,7 @@ const App: React.FC = () => {
   const [text, setText] = useState('STAR TREK');
   const [selectedFont, setSelectedFont] = useState(fonts[0]);
   const [selectedTheme, setSelectedTheme] = useState<Theme | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
   // Color override states - these will override theme colors
   const [textColor, setTextColor] = useState<number>(0x0077ff); // Default blue
@@ -60,6 +63,11 @@ const App: React.FC = () => {
     // Update color overrides to match theme colors
     setTextColor(theme.color);
     setBackgroundColor(theme.background);
+  };
+
+  // Apply product when selected
+  const applyProduct = (product: Product) => {
+    setSelectedProduct(product);
   };
 
   // Initialize with TNG Title theme
@@ -132,7 +140,7 @@ const App: React.FC = () => {
       const textGeo = new TextGeometry(text, {
         font,
         size: 30,
-        depth: 5, // Reduced from 10 to 5 for thinner text
+        depth: selectedProduct ? selectedProduct.text.thickness : 5, // Use product thickness or default
         curveSegments: 12,
         bevelEnabled: false,
       });
@@ -159,19 +167,72 @@ const App: React.FC = () => {
       // Ensure the material name is set for proper identification in the exporter
       textMat.name = 'TextMaterial';
       const textMesh = new THREE.Mesh(textGeo, textMat);
-      // Position text so it sits entirely above the background pill
-      // Pill is at z=0 with depth 5, so its top surface is at z=5
-      // Text should start at z=5 (touching the pill's top) and extend to z=10
-      // Since text depth is 5, position center at z=7.5 (5 + 2.5)
-      textMesh.position.z = 5 + (5 / 2); // Pill top (5) + half text depth (2.5) = 7.5
+      // Position text based on product specifications
+      if (selectedProduct) {
+        // Text starts with overlap into background, then extends above it
+        const backgroundThickness = selectedProduct.background.thickness;
+        const textThickness = selectedProduct.text.thickness;
+        const overlap = selectedProduct.text.overlap;
+        
+        // Text starts at (background thickness - overlap) and extends to (background thickness + text thickness - overlap)
+        const textStartZ = backgroundThickness - overlap;
+        const textCenterZ = textStartZ + (textThickness / 2);
+        textMesh.position.z = textCenterZ;
+      } else {
+        // Fallback positioning for when no product is selected
+        textMesh.position.z = 5 + (5 / 2); // Pill top (5) + half text depth (2.5) = 7.5
+      }
       textMeshRef.current = textMesh;
       if (sceneRef.current) sceneRef.current.add(textMesh);
+
+        // Scale text based on product size constraints if a product is selected
+        if (selectedProduct && textGeo.boundingBox) {
+          const { min, max } = textGeo.boundingBox;
+          const currentWidth = max.x - min.x;
+          const currentHeight = max.y - min.y;
+          
+          // Calculate scaling to meet minimum size requirements
+          const minScaleX = selectedProduct.minSize[0] / currentWidth;
+          const minScaleY = selectedProduct.minSize[1] / currentHeight;
+          let scaleFactor = Math.max(minScaleX, minScaleY);
+          
+          // If minimum requirements are met, check if we can scale up to maximum
+          if (scaleFactor <= 1) {
+            scaleFactor = 1; // No scaling needed for minimum
+          }
+          
+          // Check if scaling to maximum is possible without exceeding either dimension
+          const maxScaleX = selectedProduct.maxSize[0] / currentWidth;
+          const maxScaleY = selectedProduct.maxSize[1] / currentHeight;
+          const maxPossibleScale = Math.min(maxScaleX, maxScaleY);
+          
+          // Apply the larger of the two scales (minimum requirement vs maximum possible)
+          scaleFactor = Math.max(scaleFactor, maxPossibleScale);
+          
+          // Apply uniform scaling to maintain aspect ratio
+          textMesh.scale.set(scaleFactor, scaleFactor, 1);
+          
+          console.log(`Text scaled by factor ${scaleFactor.toFixed(3)} to meet product constraints`);
+          console.log(`Original size: ${currentWidth.toFixed(1)} x ${currentHeight.toFixed(1)}mm`);
+          console.log(`Scaled size: ${(currentWidth * scaleFactor).toFixed(1)} x ${(currentHeight * scaleFactor).toFixed(1)}mm`);
+        }
 
       // Create pill background
       if (textGeo.boundingBox) {
         const { min, max } = textGeo.boundingBox;
         const padding = 10;
-        const width = max.x - min.x + padding * 2;
+        
+        // Add extra left padding for hole if product has left hole add-on
+        let leftPadding = padding;
+        let rightPadding = padding;
+        if (selectedProduct) {
+          const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
+          if (leftHole) {
+            leftPadding = padding + leftHole.padding; // Extra padding for hole
+          }
+        }
+        
+        const width = max.x - min.x + leftPadding + rightPadding;
         const height = max.y - min.y + padding * 2;
         const radius = height / 2;
 
@@ -195,7 +256,7 @@ const App: React.FC = () => {
         shape.quadraticCurveTo(x, y, x + radius, y);
 
         const pillGeo = new THREE.ExtrudeGeometry(shape, {
-          depth: 5, // Same depth as text for clean alignment
+          depth: selectedProduct ? selectedProduct.background.thickness : 5, // Use product thickness or default
           bevelEnabled: false,
         });
         
@@ -214,13 +275,27 @@ const App: React.FC = () => {
         // Ensure the material name is set for proper identification in the exporter
         pillMat.name = 'BackgroundMaterial';
         const pillMesh = new THREE.Mesh(pillGeo, pillMat);
-        // Position pill at z=0 (build plate level) so text sits on top
-        pillMesh.position.z = 0;
+        
+        // Position pill to center it around the text, accounting for left padding
+        if (selectedProduct) {
+          // Pill sits at z=0 (build plate level) with specified thickness
+          pillMesh.position.z = selectedProduct.background.thickness / 2;
+          
+          // Adjust X position to account for left padding (move right to center text)
+          const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
+          if (leftHole) {
+            const leftPadding = leftHole.padding;
+            pillMesh.position.x = leftPadding / 2; // Move right by half the extra padding
+          }
+        } else {
+          // Fallback positioning for when no product is selected
+          pillMesh.position.z = 0;
+        }
         pillMeshRef.current = pillMesh;
         if (sceneRef.current) sceneRef.current.add(pillMesh);
       }
     });
-  }, [text, selectedFont, textColor, backgroundColor]);
+  }, [text, selectedFont, textColor, backgroundColor, selectedProduct]);
 
   // Export scene to 3MF
   const export3MF = async () => {
@@ -285,8 +360,29 @@ const App: React.FC = () => {
           alignItems: 'center',
         }}
       >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <label>Theme: </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label>Product: </label>
+          <select
+            value={selectedProduct?.name || ''}
+            onChange={(e) => {
+              const product = products.find(p => p.name === e.target.value);
+              if (product) {
+                applyProduct(product);
+              }
+            }}
+            style={{ minWidth: '150px' }}
+          >
+            <option value="">Select a product...</option>
+            {products.map((product) => (
+              <option key={product.name} value={product.name}>
+                {product.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label>Theme: </label>
             <select
               value={selectedTheme?.name || ''}
               onChange={(e) => {
