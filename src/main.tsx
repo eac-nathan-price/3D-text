@@ -10,7 +10,7 @@ const fonts = ['Federation_Regular.json']; // add more JSON fonts here
 
 const App: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
-  const [text, setText] = useState('Hello World');
+  const [text, setText] = useState('STAR TREK');
   const [selectedFont, setSelectedFont] = useState(fonts[0]);
 
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -90,7 +90,7 @@ const App: React.FC = () => {
       textGeo.center();
 
       const textMat = new THREE.MeshPhongMaterial({ 
-        color: 0xffcc00,
+        color: 0x0077ff, // Changed to the exact previous background color (blue)
         name: 'TextMaterial'
       });
       const textMesh = new THREE.Mesh(textGeo, textMat);
@@ -134,7 +134,7 @@ const App: React.FC = () => {
           bevelEnabled: false,
         });
         const pillMat = new THREE.MeshPhongMaterial({ 
-          color: 0x0077ff,
+          color: 0x000000, // Changed from 0x0077ff (blue) to 0x000000 (black)
           name: 'BackgroundMaterial'
         });
         const pillMesh = new THREE.Mesh(pillGeo, pillMat);
