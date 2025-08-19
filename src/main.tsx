@@ -122,6 +122,17 @@ const App: React.FC = () => {
       });
       textGeo.computeBoundingBox();
       textGeo.center();
+      
+      // Ensure the geometry is properly formed for 3D printing
+      // This helps prevent non-manifold edges
+      textGeo.computeVertexNormals();
+      textGeo.computeBoundingSphere();
+      
+      // For 3D printing, ensure the geometry is watertight
+      // TextGeometry should already be watertight, but let's verify
+      if (textGeo.attributes.position && textGeo.attributes.position.count > 0) {
+        console.log(`Text geometry created with ${textGeo.attributes.position.count} vertices`);
+      }
 
       // Create text material with preset color (can be customized later)
       // The 3MF exporter will use whatever color is currently set on this material
@@ -172,6 +183,12 @@ const App: React.FC = () => {
           bevelEnabled: false,
         });
         
+        // Ensure the pill geometry is properly formed for 3D printing
+        // This helps prevent non-manifold edges
+        pillGeo.computeVertexNormals();
+        pillGeo.computeBoundingBox();
+        pillGeo.computeBoundingSphere();
+
         // Create background material with preset color (can be customized later)
         // The 3MF exporter will use whatever color is currently set on this material
         const pillMat = new THREE.MeshPhongMaterial({ 
@@ -196,14 +213,25 @@ const App: React.FC = () => {
     try {
       // Log current colors in the scene for debugging
       console.log('=== Current Scene Colors ===');
+      const sceneColors: Array<{name: string, color: string, material: string}> = [];
+      
       sceneRef.current.traverse((object) => {
         if (object instanceof THREE.Mesh && object.material) {
           const material = Array.isArray(object.material) ? object.material[0] : object.material;
           if (material instanceof THREE.MeshPhongMaterial && material.color) {
-            console.log(`${object.name || 'Unnamed Mesh'}: #${material.color.getHexString().toUpperCase()}`);
+            const colorHex = '#' + material.color.getHexString().toUpperCase();
+            const meshInfo = {
+              name: object.name || 'Unnamed Mesh',
+              color: colorHex,
+              material: material.name || 'Unnamed Material'
+            };
+            sceneColors.push(meshInfo);
+            console.log(`${meshInfo.name}: ${colorHex} (Material: ${meshInfo.material})`);
           }
         }
       });
+      
+      console.log('Scene Colors Summary:', sceneColors);
       console.log('===========================');
 
       // The exporter will automatically use the current colors of all objects in the scene

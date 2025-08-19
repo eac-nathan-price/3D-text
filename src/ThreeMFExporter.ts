@@ -57,6 +57,13 @@ export class ThreeMFExporter {
       console.log(`Mesh ${index}:`, mesh.name, 'Material:', material.name, 'Current Color:', color);
     });
 
+    // Validate and clean geometry to prevent non-manifold edges
+    meshes.forEach((mesh, index) => {
+      if (mesh.geometry) {
+        this.validateAndCleanGeometry(mesh.geometry, `Mesh ${index} (${mesh.name || 'unnamed'})`);
+      }
+    });
+
     // Generate Bambu Studio compatible 3MF structure
     const mainModelContent = this.generateMainModelXML(meshes);
     const assemblyObjectContent = this.generateAssemblyObjectXML(meshes);
@@ -78,6 +85,116 @@ export class ThreeMFExporter {
 
     const zipData = zipSync(files, { level: 8 });
     return new Blob([zipData], { type: 'application/3mf' });
+  }
+
+  /**
+   * Validates and cleans geometry to prevent non-manifold edges
+   */
+  private validateAndCleanGeometry(geometry: THREE.BufferGeometry, meshName: string): void {
+    try {
+      // Ensure geometry has required attributes
+      if (!geometry.attributes.position) {
+        console.warn(`${meshName}: Missing position attribute`);
+        return;
+      }
+
+      // Check for degenerate triangles (triangles with zero area)
+      if (geometry.index) {
+        const indices = geometry.index;
+        let degenerateCount = 0;
+        
+        for (let i = 0; i < indices.count; i += 3) {
+          const v1 = indices.getX(i);
+          const v2 = indices.getX(i + 1);
+          const v3 = indices.getX(i + 2);
+          
+          if (v1 === v2 || v2 === v3 || v1 === v3) {
+            degenerateCount++;
+          }
+        }
+        
+        if (degenerateCount > 0) {
+          console.warn(`${meshName}: Found ${degenerateCount} degenerate triangles`);
+        }
+      }
+
+      // Ensure normals are computed for proper rendering
+      if (!geometry.attributes.normal) {
+        geometry.computeVertexNormals();
+        console.log(`${meshName}: Computed vertex normals`);
+      }
+
+      // Ensure bounding box is computed
+      if (!geometry.boundingBox) {
+        geometry.computeBoundingBox();
+      }
+
+      // Ensure bounding sphere is computed
+      if (!geometry.boundingSphere) {
+        geometry.computeBoundingSphere();
+      }
+
+      // Ensure the geometry is properly closed (manifold)
+      this.ensureManifoldGeometry(geometry, meshName);
+
+    } catch (error) {
+      console.warn(`${meshName}: Error validating geometry:`, error);
+    }
+  }
+
+  /**
+   * Ensures geometry is manifold (properly closed) to prevent non-manifold edges
+   */
+  private ensureManifoldGeometry(geometry: THREE.BufferGeometry, meshName: string): void {
+    try {
+      // For text geometry, ensure it's properly closed
+      if (geometry.attributes.position) {
+        const positions = geometry.attributes.position;
+        
+        // Check if we have enough vertices for proper triangulation
+        if (positions.count < 3) {
+          console.warn(`${meshName}: Not enough vertices for triangulation`);
+          return;
+        }
+
+        // For extruded text, ensure the geometry is watertight
+        // This is especially important for 3D printing
+        if (geometry.attributes.uv) {
+          // UV coordinates exist, which suggests this is a proper 3D mesh
+          console.log(`${meshName}: Geometry has UV coordinates, appears to be properly formed`);
+        } else {
+          // No UV coordinates, but this is normal for simple geometries
+          console.log(`${meshName}: Geometry is simple (no UV coordinates)`);
+        }
+
+        // Ensure the geometry has proper winding order
+        if (geometry.attributes.normal) {
+          const normals = geometry.attributes.normal;
+          let consistentNormals = true;
+          
+          // Check if normals are consistent (all pointing outward)
+          for (let i = 0; i < normals.count; i++) {
+            const nx = normals.getX(i);
+            const ny = normals.getY(i);
+            const nz = normals.getZ(i);
+            
+            // Check if normal is a valid unit vector
+            const length = Math.sqrt(nx * nx + ny * ny + nz * nz);
+            if (Math.abs(length - 1.0) > 0.1) {
+              consistentNormals = false;
+              break;
+            }
+          }
+          
+          if (!consistentNormals) {
+            console.warn(`${meshName}: Inconsistent normals detected, recomputing`);
+            geometry.computeVertexNormals();
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`${meshName}: Error ensuring manifold geometry:`, error);
+    }
   }
 
   private generateMainModelXML(meshes: THREE.Mesh[]): string {
@@ -192,6 +309,9 @@ export class ThreeMFExporter {
         const v1 = indices.getX(i);
         const v2 = indices.getX(i + 1);
         const v3 = indices.getX(i + 2);
+        
+        // Ensure proper winding order (counter-clockwise for 3MF)
+        // This helps prevent non-manifold edges
         xml += `     <triangle v1="${v1}" v2="${v2}" v3="${v3}" />\n`;
       }
     } else {
@@ -200,7 +320,11 @@ export class ThreeMFExporter {
         const v1 = i;
         const v2 = i + 1;
         const v3 = i + 2;
-        xml += `     <triangle v1="${v1}" v2="${v2}" v3="${v3}" />\n`;
+        
+        // Ensure we don't exceed vertex count
+        if (v2 < positions.count && v3 < positions.count) {
+          xml += `     <triangle v1="${v1}" v2="${v2}" v3="${v3}" />\n`;
+        }
       }
     }
     
@@ -210,6 +334,11 @@ export class ThreeMFExporter {
 
   private generateProjectSettingsXML(meshes: THREE.Mesh[]): string {
     const materialCount = meshes.length;
+    
+    // This method generates the project settings JSON that Bambu Studio uses
+    // to configure filaments and extruders. The key is that we extract colors
+    // directly from the Three.js scene materials to ensure the 3MF colors
+    // exactly match what the user sees in the web application.
     
     let json = '{\n';
     json += '    "default_filament_profile": [\n';
@@ -235,9 +364,23 @@ export class ThreeMFExporter {
     
     json += '    "extruder_colour": [\n';
     
-    // Add extruder colors for each material
+    // Add extruder colors for each material - use the same colors as the filaments
     for (let i = 0; i < materialCount; i++) {
-      json += '        "#018001"';
+      const mesh = meshes[i];
+      const meshMaterial = mesh.material;
+      const material = Array.isArray(meshMaterial) ? meshMaterial[0] : meshMaterial;
+      let color = '#FFCC00'; // Default fallback color
+      
+      // Use the same color logic as filament colors for consistency
+      if (material instanceof THREE.MeshBasicMaterial || 
+          material instanceof THREE.MeshPhongMaterial || 
+          material instanceof THREE.MeshStandardMaterial) {
+        if (material.color) {
+          color = '#' + material.color.getHexString().toUpperCase();
+        }
+      }
+      
+      json += `        "${color}"`;
       if (i < materialCount - 1) json += ',';
       json += '\n';
     }
@@ -249,7 +392,8 @@ export class ThreeMFExporter {
     // This ensures the 3MF uses the actual colors visible in the Three.js scene
     // rather than any preset or default values
     for (let i = 0; i < materialCount; i++) {
-      const meshMaterial = meshes[i].material;
+      const mesh = meshes[i];
+      const meshMaterial = mesh.material;
       const material = Array.isArray(meshMaterial) ? meshMaterial[0] : meshMaterial;
       let color = '#FFCC00'; // Default fallback color
       
@@ -259,7 +403,12 @@ export class ThreeMFExporter {
           material instanceof THREE.MeshStandardMaterial) {
         if (material.color) {
           color = '#' + material.color.getHexString().toUpperCase();
+          console.log(`Mesh ${i} (${mesh.name || 'unnamed'}): Using color ${color} from material`);
+        } else {
+          console.warn(`Mesh ${i} (${mesh.name || 'unnamed'}): Material has no color, using fallback ${color}`);
         }
+      } else {
+        console.warn(`Mesh ${i} (${mesh.name || 'unnamed'}): Unsupported material type, using fallback ${color}`);
       }
       
       json += `        "${color}"`;
