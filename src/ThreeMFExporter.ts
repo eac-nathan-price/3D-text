@@ -48,7 +48,7 @@ export class ThreeMFExporter {
 
     // Generate Bambu Studio compatible 3MF structure
     const mainModelContent = this.generateMainModelXML(meshes);
-    const objectFiles = this.generateObjectFiles(meshes);
+    const assemblyObjectContent = this.generateAssemblyObjectXML(meshes);
     const relsContent = this.generateRelsXML();
     const contentTypesContent = this.generateContentTypesXML();
     const projectSettingsContent = this.generateProjectSettingsXML(meshes);
@@ -59,11 +59,7 @@ export class ThreeMFExporter {
     files['_rels/.rels'] = strToU8(relsContent);
     files['3D/3dmodel.model'] = strToU8(mainModelContent);
     files['3D/_rels/3dmodel.model.rels'] = strToU8(this.generateModelRelsXML());
-    
-    // Add object files
-    objectFiles.forEach((content, filename) => {
-      files[`3D/Objects/${filename}`] = strToU8(content);
-    });
+    files['3D/Objects/object_3.model'] = strToU8(assemblyObjectContent);
 
     // Add Bambu Studio metadata
     files['Metadata/project_settings.config'] = strToU8(projectSettingsContent);
@@ -86,7 +82,7 @@ export class ThreeMFExporter {
     xml += ' <metadata name="CreationDate">' + new Date().toISOString().split('T')[0] + '</metadata>\n';
     
     xml += this.generateMainResourcesSection(meshes);
-    xml += this.generateMainBuildSection(meshes);
+    xml += this.generateMainBuildSection();
     
     xml += '</model>';
     return xml;
@@ -95,50 +91,34 @@ export class ThreeMFExporter {
   private generateMainResourcesSection(meshes: THREE.Mesh[]): string {
     let xml = ' <resources>\n';
     
-         // Create component objects that reference individual object files
-     meshes.forEach((_mesh, index) => {
-       const objectId = (index + 1) * 2; // Use even numbers for main objects
-       const uuid = this.generateUUID();
-       xml += `  <object id="${objectId}" p:UUID="${uuid}" type="model">\n`;
-       xml += `   <components>\n`;
-       xml += `    <component p:path="/3D/Objects/object_${index + 1}.model" objectid="${objectId - 1}" p:UUID="${this.generateUUID()}" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>\n`;
-       xml += `   </components>\n`;
-       xml += `  </object>\n`;
-     });
-
+    // Create single assembly object that contains all meshes
+    xml += '  <object id="3" p:UUID="' + this.generateUUID() + '" type="model">\n';
+    xml += '   <components>\n';
+    
+    // Add each mesh as a component with positioning
+    meshes.forEach((_mesh, index) => {
+      const componentId = index + 1;
+      const xOffset = index === 0 ? -13.3 : 13.3; // Position text and background side by side
+      xml += `    <component p:path="/3D/Objects/object_3.model" objectid="${componentId}" p:UUID="${this.generateUUID()}" transform="1 0 0 0 1 0 0 0 1 ${xOffset} 0 0"/>\n`;
+    });
+    
+    xml += '   </components>\n';
+    xml += '  </object>\n';
     xml += ' </resources>\n';
     return xml;
   }
 
-  private generateMainBuildSection(meshes: THREE.Mesh[]): string {
+  private generateMainBuildSection(): string {
     let xml = ' <build p:UUID="' + this.generateUUID() + '">\n';
     
-         meshes.forEach((_mesh, index) => {
-       const objectId = (index + 1) * 2;
-       const uuid = this.generateUUID();
-       // Position objects with some spacing
-       const xOffset = index * 50;
-       xml += `  <item objectid="${objectId}" p:UUID="${uuid}" transform="1 0 0 0 1 0 0 0 1 ${xOffset} 0 0" printable="1"/>\n`;
-     });
+    // Only place the assembly object
+    xml += '  <item objectid="3" p:UUID="' + this.generateUUID() + '" transform="1 0 0 0 1 0 0 0 1 141.3 128 12.8" printable="1"/>\n';
     
     xml += ' </build>\n';
     return xml;
   }
 
-  private generateObjectFiles(meshes: THREE.Mesh[]): Map<string, string> {
-    const objectFiles = new Map<string, string>();
-    
-    meshes.forEach((mesh, index) => {
-      const objectId = index + 1;
-      const filename = `object_${objectId}.model`;
-      const content = this.generateObjectModelXML(mesh, objectId);
-      objectFiles.set(filename, content);
-    });
-    
-    return objectFiles;
-  }
-
-  private generateObjectModelXML(mesh: THREE.Mesh, objectId: number): string {
+  private generateAssemblyObjectXML(meshes: THREE.Mesh[]): string {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
     xml += '<model unit="' + this.options.unit + '" xml:lang="en-US" ';
     xml += 'xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" ';
@@ -147,14 +127,20 @@ export class ThreeMFExporter {
     
     xml += ' <metadata name="BambuStudio:3mfVersion">1</metadata>\n';
     xml += ' <resources>\n';
-    xml += `  <object id="${objectId}" p:UUID="${this.generateUUID()}" type="model">\n`;
-    xml += '   <mesh>\n';
     
-    xml += this.generateVerticesXML(mesh.geometry);
-    xml += this.generateTrianglesXML(mesh.geometry);
+    // Add each mesh as a separate object within the assembly
+    meshes.forEach((mesh: THREE.Mesh, index: number) => {
+      const objectId = index + 1;
+      xml += `  <object id="${objectId}" p:UUID="${this.generateUUID()}" type="model">\n`;
+      xml += '   <mesh>\n';
+      
+      xml += this.generateVerticesXML(mesh.geometry);
+      xml += this.generateTrianglesXML(mesh.geometry);
+      
+      xml += '   </mesh>\n';
+      xml += '  </object>\n';
+    });
     
-    xml += '   </mesh>\n';
-    xml += '  </object>\n';
     xml += ' </resources>\n';
     xml += ' <build/>\n';
     xml += '</model>';
@@ -218,24 +204,24 @@ export class ThreeMFExporter {
     json += '    ],\n';
     json += '    "filament_colour": [\n';
     
-         // Add colors for each material
-     for (let i = 0; i < materialCount; i++) {
-       const meshMaterial = meshes[i].material;
-       const material = Array.isArray(meshMaterial) ? meshMaterial[0] : meshMaterial;
-       let color = extruderColors[i % extruderColors.length];
-       
-       if (material instanceof THREE.MeshBasicMaterial || 
-           material instanceof THREE.MeshPhongMaterial || 
-           material instanceof THREE.MeshStandardMaterial) {
-         if (material.color) {
-           color = '#' + material.color.getHexString().toUpperCase();
-         }
-       }
-       
-       json += `        "${color}"`;
-       if (i < materialCount - 1) json += ',';
-       json += '\n';
-     }
+    // Add colors for each material
+    for (let i = 0; i < materialCount; i++) {
+      const meshMaterial = meshes[i].material;
+      const material = Array.isArray(meshMaterial) ? meshMaterial[0] : meshMaterial;
+      let color = extruderColors[i % extruderColors.length];
+      
+      if (material instanceof THREE.MeshBasicMaterial || 
+          material instanceof THREE.MeshPhongMaterial || 
+          material instanceof THREE.MeshStandardMaterial) {
+        if (material.color) {
+          color = '#' + material.color.getHexString().toUpperCase();
+        }
+      }
+      
+      json += `        "${color}"`;
+      if (i < materialCount - 1) json += ',';
+      json += '\n';
+    }
     
     json += '    ],\n';
     json += '    "filament_map": [\n';
@@ -258,47 +244,45 @@ export class ThreeMFExporter {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
     xml += '<config>\n';
     
-    // Define each object with its extruder assignment
+    // Define the assembly object
+    xml += '  <object id="3">\n';
+    xml += '    <metadata key="name" value="Assembly"/>\n';
+    xml += '    <metadata key="extruder" value="1"/>\n';
+    xml += `    <metadata face_count="${meshes.reduce((total, mesh) => total + (mesh.geometry.attributes.position?.count || 0) / 3, 0)}"/>\n`;
+    
+    // Define each part within the assembly
     meshes.forEach((mesh, index) => {
-      const objectId = (index + 1) * 2;
       const partId = index + 1;
       const extruderId = index + 1;
+      const faceCount = Math.floor((mesh.geometry.attributes.position?.count || 0) / 3);
       
-      xml += `  <object id="${objectId}">\n`;
-      xml += `    <metadata key="name" value="${mesh.name || 'Object_' + (index + 1)}"/>\n`;
-      xml += `    <metadata key="extruder" value="${extruderId}"/>\n`;
       xml += `    <part id="${partId}" subtype="normal_part">\n`;
-      xml += `      <metadata key="name" value="${mesh.name || 'Object_' + (index + 1)}"/>\n`;
-      xml += `      <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>\n`;
+      xml += `      <metadata key="name" value="${mesh.name || 'Part_' + (index + 1)}"/>\n`;
+      xml += `      <metadata key="matrix" value="1 0 0 ${index === 0 ? -13.3 : 13.3} 0 1 0 0 0 0 1 0 0 0 0 1"/>\n`;
+      xml += `      <metadata key="extruder" value="${extruderId}"/>\n`;
+      xml += `      <mesh_stat face_count="${faceCount}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>\n`;
       xml += `    </part>\n`;
-      xml += `  </object>\n`;
     });
     
+    xml += '  </object>\n';
     xml += '  <plate>\n';
     xml += '    <metadata key="plater_id" value="1"/>\n';
     xml += '    <metadata key="plater_name" value=""/>\n';
     xml += '    <metadata key="locked" value="false"/>\n';
     xml += '    <metadata key="filament_map_mode" value="Auto For Flush"/>\n';
     
-         // Add model instances
-     meshes.forEach((_mesh, index) => {
-       const objectId = (index + 1) * 2;
-       xml += `    <model_instance>\n`;
-       xml += `      <metadata key="object_id" value="${objectId}"/>\n`;
-       xml += `      <metadata key="instance_id" value="0"/>\n`;
-       xml += `      <metadata key="identify_id" value="${100 + index}"/>\n`;
-       xml += `    </model_instance>\n`;
-     });
+    // Add model instance for the assembly
+    xml += '    <model_instance>\n';
+    xml += '      <metadata key="object_id" value="3"/>\n';
+    xml += '      <metadata key="instance_id" value="0"/>\n';
+    xml += '      <metadata key="identify_id" value="132"/>\n';
+    xml += '    </model_instance>\n';
     
     xml += '  </plate>\n';
     xml += '  <assemble>\n';
     
-         // Add assemble items with positioning
-     meshes.forEach((_mesh, index) => {
-       const objectId = (index + 1) * 2;
-       const xOffset = index * 50;
-       xml += `   <assemble_item object_id="${objectId}" instance_id="0" transform="1 0 0 0 1 0 0 0 1 ${xOffset} 0 0" offset="0 0 0" />\n`;
-     });
+    // Add assemble item for the assembly
+    xml += '   <assemble_item object_id="3" instance_id="0" transform="1 0 0 0 1 0 0 0 1 141.3 128 12.8" offset="0 0 0" />\n';
     
     xml += '  </assemble>\n';
     xml += '</config>';
@@ -317,8 +301,7 @@ export class ThreeMFExporter {
   private generateModelRelsXML(): string {
     let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
     xml += '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n';
-    xml += ' <Relationship Target="/3D/Objects/object_1.model" Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />\n';
-    xml += ' <Relationship Target="/3D/Objects/object_2.model" Id="rel2" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />\n';
+    xml += ' <Relationship Target="/3D/Objects/object_3.model" Id="rel1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel" />\n';
     xml += '</Relationships>';
     return xml;
   }
