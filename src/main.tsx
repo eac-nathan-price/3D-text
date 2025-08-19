@@ -5,8 +5,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { FontLoader } from 'three/examples/jsm/loaders/FontLoader.js';
 import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
 import { ThreeMFExporter } from './ThreeMFExporter';
-import { presets } from './presets';
-import type { Preset } from './presets';
+import { themes } from './themes';
+import type { Theme } from './themes';
 
 /**
  * 3D Text Scene with 3MF Export Capability
@@ -27,9 +27,9 @@ const App: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState('STAR TREK');
   const [selectedFont, setSelectedFont] = useState(fonts[0]);
-  const [selectedPreset, setSelectedPreset] = useState<Preset | null>(null);
+  const [selectedTheme, setSelectedTheme] = useState<Theme | null>(null);
   
-  // Color override states - these will override preset colors
+  // Color override states - these will override theme colors
   const [textColor, setTextColor] = useState<number>(0x0077ff); // Default blue
   const [backgroundColor, setBackgroundColor] = useState<number>(0x000000); // Default black
 
@@ -40,33 +40,33 @@ const App: React.FC = () => {
   const textMeshRef = useRef<THREE.Mesh | null>(null);
   const pillMeshRef = useRef<THREE.Mesh | null>(null);
 
-  // Get unique tags and group presets by tag
-  const getPresetGroups = () => {
-    const allTags = presets.flatMap(preset => preset.tags);
+  // Get unique tags and group themes by tag
+  const getThemeGroups = () => {
+    const allTags = themes.flatMap(theme => theme.tags);
     const uniqueTags = [...new Set(allTags)].sort();
     
     return uniqueTags.map(tag => ({
       tag,
-      presets: presets.filter(preset => preset.tags.includes(tag))
+      themes: themes.filter(theme => theme.tags.includes(tag))
     }));
   };
 
   // Apply theme when selected
   // Note: Colors can be customized beyond themes - the 3MF exporter will use the current scene colors
-  const applyPreset = (preset: Preset) => {
-    setText(preset.text);
-    setSelectedFont(preset.font);
-    setSelectedPreset(preset);
+  const applyTheme = (theme: Theme) => {
+    setText(theme.text);
+    setSelectedFont(theme.font);
+    setSelectedTheme(theme);
     // Update color overrides to match theme colors
-    setTextColor(preset.color);
-    setBackgroundColor(preset.background);
+    setTextColor(theme.color);
+    setBackgroundColor(theme.background);
   };
 
   // Initialize with TNG Title theme
   useEffect(() => {
-    const tngTheme = presets.find(p => p.name === "TNG Title");
+    const tngTheme = themes.find(p => p.name === "TNG Title");
     if (tngTheme) {
-      applyPreset(tngTheme);
+      applyTheme(tngTheme);
     }
   }, []);
 
@@ -153,7 +153,7 @@ const App: React.FC = () => {
               // Create text material with color override (can be customized by user)
         // The 3MF exporter will use whatever color is currently set on this material
         const textMat = new THREE.MeshPhongMaterial({ 
-          color: textColor, // Use color override or preset color
+          color: textColor, // Use color override or theme color
           name: 'TextMaterial'
         });
       // Ensure the material name is set for proper identification in the exporter
@@ -208,7 +208,7 @@ const App: React.FC = () => {
         // Create background material with color override (can be customized by user)
         // The 3MF exporter will use whatever color is currently set on this material
         const pillMat = new THREE.MeshPhongMaterial({ 
-          color: backgroundColor, // Use color override or preset color
+          color: backgroundColor, // Use color override or theme color
           name: 'BackgroundMaterial'
         });
         // Ensure the material name is set for proper identification in the exporter
@@ -288,33 +288,33 @@ const App: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <label>Theme: </label>
             <select
-              value={selectedPreset?.name || ''}
+              value={selectedTheme?.name || ''}
               onChange={(e) => {
-                const preset = presets
+                const theme = themes
                   .find(p => p.name === e.target.value);
-                if (preset) {
-                  applyPreset(preset);
+                if (theme) {
+                  applyTheme(theme);
                 }
               }}
               style={{ minWidth: '200px' }}
             >
-              {getPresetGroups().map((group) => (
+              {getThemeGroups().map((group) => (
                 <optgroup key={group.tag} label={group.tag}>
-                  {group.presets.map((preset) => (
-                    <option key={preset.name} value={preset.name}>
-                      {preset.name}
+                  {group.themes.map((theme) => (
+                    <option key={theme.name} value={theme.name}>
+                      {theme.name}
                     </option>
                   ))}
                 </optgroup>
               ))}
             </select>
             {/* Reset icon - only show if colors have been modified from theme defaults */}
-            {selectedPreset && (textColor !== selectedPreset.color || backgroundColor !== selectedPreset.background) && (
+            {selectedTheme && (textColor !== selectedTheme.color || backgroundColor !== selectedTheme.background) && (
               <button
                 onClick={() => {
-                  if (selectedPreset) {
-                    setTextColor(selectedPreset.color);
-                    setBackgroundColor(selectedPreset.background);
+                  if (selectedTheme) {
+                    setTextColor(selectedTheme.color);
+                    setBackgroundColor(selectedTheme.background);
                   }
                 }}
                 style={{

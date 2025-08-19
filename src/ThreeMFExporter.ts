@@ -15,7 +15,7 @@ export class ThreeMFExporter {
    * 
    * The exporter automatically extracts colors from the current materials in the scene.
    * This means it will use whatever colors are currently applied to objects, whether they
-   * come from presets or have been customized by the user.
+   * come from themes or have been customized by the user.
    * 
    * @param scene - The Three.js scene to export
    * @param options - Export options for coordinate system and units
@@ -390,7 +390,7 @@ export class ThreeMFExporter {
     
     // Extract current colors from each mesh's material in the scene
     // This ensures the 3MF uses the actual colors visible in the Three.js scene
-    // rather than any preset or default values
+    // rather than any theme or default values
     for (let i = 0; i < materialCount; i++) {
       const mesh = meshes[i];
       const meshMaterial = mesh.material;

@@ -7,7 +7,7 @@
  * actual colors from the Three.js scene materials, ensuring the exported 
  * file matches exactly what the user sees.
  */
-export interface Preset {
+export interface Theme {
   name: string;
   font: string;
   color: number;        // Initial text color (can be overridden by user)
@@ -16,7 +16,7 @@ export interface Preset {
   tags: string[];
 }
 
-export const presets: Preset[] = [
+export const themes: Theme[] = [
   {
     name: "TNG Title",
     font: "Federation_Regular.json",
