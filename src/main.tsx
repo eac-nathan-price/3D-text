@@ -164,10 +164,8 @@ const App: React.FC = () => {
        });
        
        
-             textGeo.computeBoundingBox();
-       textGeo.center();
-       
-               textGeo.center();
+                           textGeo.computeBoundingBox();
+        textGeo.center();
       
       // Ensure the geometry is properly formed for 3D printing
       // This helps prevent non-manifold edges
@@ -185,24 +183,28 @@ const App: React.FC = () => {
       // Ensure the material name is set for proper identification in the exporter
       textMat.name = 'TextMaterial';
       const textMesh = new THREE.Mesh(textGeo, textMat);
-       // Position text based on product specifications
-       if (selectedProduct) {
-         // Text should start at the top surface of the background and extend above it
-         const backgroundThickness = selectedProduct.background.thickness;
-         const textThickness = selectedProduct.text.thickness;
-         const overlap = selectedProduct.text.overlap;
-         const totalTextDepth = textThickness + overlap; // Total Z depth including overlap
-         
-         // Background goes from z=0 to z=backgroundThickness (e.g., 0 to 2mm)
-         // Text should start at backgroundThickness - overlap and extend above it
-         // For keychain: background is 2mm thick, text is 1.05mm thick total
-         // Text should go from z=1.95mm to z=3mm (centered at z=2.475mm)
-         // Since TextGeometry origin is at the center, position at z=2.475mm
-         const textStartZ = backgroundThickness - overlap; // 2mm - 0.05mm = 1.95mm
-         const textCenterZ = textStartZ + (totalTextDepth / 2); // 1.95mm + 1.05mm/2 = 2.475mm
-         textMesh.position.z = textCenterZ;
-         
-         
+               // Position text based on product specifications
+        if (selectedProduct) {
+          // Text should start at the top surface of the background and extend above it
+          const backgroundThickness = selectedProduct.background.thickness;
+          const textThickness = selectedProduct.text.thickness;
+          const overlap = selectedProduct.text.overlap;
+          const totalTextDepth = textThickness + overlap; // Total Z depth including overlap
+          
+          // Background goes from z=0 to z=backgroundThickness (e.g., 0 to 2mm)
+          // Text should start at backgroundThickness - overlap and extend above it
+          // For keychain: background is 2mm thick, text is 1.05mm thick total
+          // Text should go from z=1.95mm to z=3mm (centered at z=2.475mm)
+          // Since TextGeometry origin is at the center, position at z=2.475mm
+          const textStartZ = backgroundThickness - overlap; // 2mm - 0.05mm = 1.95mm
+          const textCenterZ = textStartZ + (totalTextDepth / 2); // 1.95mm + 1.05mm/2 = 2.475mm
+          textMesh.position.z = textCenterZ;
+          
+          // Center the text horizontally within the pill
+          // The text geometry is already centered at its origin, so we just need to ensure
+          // the pill is wide enough to contain it with proper padding
+          textMesh.position.x = 0; // Keep text centered at origin
+          textMesh.position.y = 0; // Keep text centered at origin
         }
       textMeshRef.current = textMesh;
       if (sceneRef.current) sceneRef.current.add(textMesh);
@@ -237,24 +239,32 @@ const App: React.FC = () => {
           
         }
 
-        // Create pill background
-        if (textGeo.boundingBox) {
-          const { min, max } = textGeo.boundingBox;
-          const basePadding = selectedProduct.background.padding;
-          
-          // Calculate padding for hole if product has left hole add-on
-          let leftPadding = basePadding;
-          let rightPadding = basePadding;
-          const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
-          if (leftHole) {
-            // Hole is 3mm diameter with 1mm padding on all sides = 5mm total width
-            // We need the background to extend 5mm to the left of the text
-            leftPadding = basePadding + leftHole.padding; // basePadding + 1mm = 3mm total left padding
-          }
-          
-          const width = max.x - min.x + leftPadding + rightPadding;
-          const height = max.y - min.y + basePadding * 2;
-          const radius = height / 2;
+                          // Create pill background
+          if (textGeo.boundingBox) {
+            const { min, max } = textGeo.boundingBox;
+            const basePadding = selectedProduct.background.padding;
+            
+            // Calculate dimensions for the hole if product has left hole add-on
+            let leftPadding = basePadding;
+            let rightPadding = basePadding;
+            const leftHole = selectedProduct.addOns.find(addon => addon.type === "hole" && addon.position === "left");
+            
+            if (leftHole) {
+              // Hole is 3mm diameter, so we need:
+              // - 1mm padding from left edge of pill to hole
+              // - 3mm for the hole itself
+              // - 1mm padding from hole to text
+              // - basePadding from text to right edge of pill
+              leftPadding = 1 + 3 + 1; // 5mm total left padding
+              rightPadding = basePadding; // Keep right padding as specified
+            }
+            
+            // Calculate pill dimensions
+            const textWidth = max.x - min.x;
+            const textHeight = max.y - min.y;
+            const width = textWidth + leftPadding + rightPadding;
+            const height = textHeight + basePadding * 2;
+            const radius = height / 2;
 
           const shape = new THREE.Shape();
           const x = -width / 2;
@@ -280,18 +290,7 @@ const App: React.FC = () => {
              bevelEnabled: false,
            });
            
-           // IMPORTANT: ExtrudeGeometry creates geometry from z=0 to z=depth
-           // So a 2mm depth creates geometry from z=0 to z=2
-           // To center this at z=1, we need to position it at z=1
-           // But first, let's verify the geometry bounds
-           
-           
-           
-           
-          
-          
-          
-                     // Ensure the pill geometry is properly formed for 3D printing
+                       // Ensure the pill geometry is properly formed for 3D printing
            // This helps prevent non-manifold edges
            pillGeo.computeVertexNormals();
            pillGeo.computeBoundingBox();
@@ -309,30 +308,46 @@ const App: React.FC = () => {
           pillMat.name = 'BackgroundMaterial';
           const pillMesh = new THREE.Mesh(pillGeo, pillMat);
           
-                     // Position pill to center it around the text, accounting for left padding
-           // Pill should go from z=0 to z=2mm
-           // ExtrudeGeometry creates geometry from z=0 to z=depth, so position at z=0 to get z=0 to z=2mm range
-           pillMesh.position.z = 0; // Position at z=0 to get z=0 to z=2mm range
-           
-           
-          
-          // Adjust X position to account for left padding (move right to center text)
-          if (leftHole) {
-            const leftPadding = leftHole.padding;
-            pillMesh.position.x = leftPadding / 2; // Move right by half the extra padding
-          }
+                                 // Position the pill at the origin
+            // The pill goes from z=0 to z=2mm and is centered at the origin
+            pillMesh.position.set(0, 0, 0);
           
                      
 
-          pillMeshRef.current = pillMesh;
-          if (sceneRef.current) sceneRef.current.add(pillMesh);
-          
-          
-          
-          
-          
+                     pillMeshRef.current = pillMesh;
+           if (sceneRef.current) sceneRef.current.add(pillMesh);
+           
+           // Add visual representation of the hole if it exists
+           if (leftHole) {
+             // Create a 3mm diameter, 2mm high cylinder to represent the hole
+             const holeGeometry = new THREE.CylinderGeometry(1.5, 1.5, 2, 16); // radius=1.5mm, height=2mm
+             const holeMaterial = new THREE.MeshPhongMaterial({ 
+               color: 0x666666, // Dark grey to represent the hole
+               transparent: true,
+               opacity: 0.7,
+               name: 'HoleMaterial'
+             });
+             const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
+             
+                           // Position the hole:
+              // - Left edge of pill is at -width/2
+              // - 1mm padding from left edge = -width/2 + 1
+              // - Hole center should be at -width/2 + 1 + 1.5 = -width/2 + 2.5
+              const holeX = -width / 2 + 2.5;
+              const holeY = 0; // Center in Y direction
+              const holeZ = 1; // Center in Z direction (pill goes from z=0 to z=2)
+              
+              holeMesh.position.set(holeX, holeY, holeZ);
+              
+              // Rotate the hole 90 degrees around X-axis so it goes through the pill horizontally
+              // This makes the cylinder lie flat (parallel to the pill's top/bottom faces)
+              holeMesh.rotation.x = Math.PI / 2;
+             
+             if (sceneRef.current) sceneRef.current.add(holeMesh);
+           }
+           
 
-        }
+         }
     });
   }, [text, selectedFont, textColor, backgroundColor, selectedProduct]);
 
