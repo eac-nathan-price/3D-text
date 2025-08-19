@@ -12,12 +12,13 @@ import type { Preset } from './presets';
  * 3D Text Scene with 3MF Export Capability
  * 
  * Color System:
- * - Presets provide initial colors for text and background
- * - Users can override preset colors using color pickers
+ * - Themes provide initial colors for text and background
+ * - Users can override theme colors using color pickers
+ * - A reset button appears when colors are modified to restore theme defaults
  * - Overridden colors are applied to Three.js materials in real-time
  * - The 3MF exporter automatically extracts colors from the current scene materials
  * - This ensures the exported 3MF exactly matches what the user sees in the scene
- * - All color changes (preset or custom) are reflected in the exported 3MF file
+ * - All color changes (theme or custom) are reflected in the exported 3MF file
  */
 
 const fonts = ['Federation_Regular.json']; // add more JSON fonts here
@@ -50,22 +51,22 @@ const App: React.FC = () => {
     }));
   };
 
-  // Apply preset when selected
-  // Note: Colors can be customized beyond presets - the 3MF exporter will use the current scene colors
+  // Apply theme when selected
+  // Note: Colors can be customized beyond themes - the 3MF exporter will use the current scene colors
   const applyPreset = (preset: Preset) => {
     setText(preset.text);
     setSelectedFont(preset.font);
     setSelectedPreset(preset);
-    // Update color overrides to match preset colors
+    // Update color overrides to match theme colors
     setTextColor(preset.color);
     setBackgroundColor(preset.background);
   };
 
-  // Initialize with TNG Title preset
+  // Initialize with TNG Title theme
   useEffect(() => {
-    const tngPreset = presets.find(p => p.name === "TNG Title");
-    if (tngPreset) {
-      applyPreset(tngPreset);
+    const tngTheme = presets.find(p => p.name === "TNG Title");
+    if (tngTheme) {
+      applyPreset(tngTheme);
     }
   }, []);
 
@@ -284,30 +285,57 @@ const App: React.FC = () => {
           alignItems: 'center',
         }}
       >
-        <div>
-          <label>Preset: </label>
-          <select
-            value={selectedPreset?.name || ''}
-            onChange={(e) => {
-              const preset = presets
-                .find(p => p.name === e.target.value);
-              if (preset) {
-                applyPreset(preset);
-              }
-            }}
-            style={{ minWidth: '200px' }}
-          >
-            {getPresetGroups().map((group) => (
-              <optgroup key={group.tag} label={group.tag}>
-                {group.presets.map((preset) => (
-                  <option key={preset.name} value={preset.name}>
-                    {preset.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <label>Theme: </label>
+            <select
+              value={selectedPreset?.name || ''}
+              onChange={(e) => {
+                const preset = presets
+                  .find(p => p.name === e.target.value);
+                if (preset) {
+                  applyPreset(preset);
+                }
+              }}
+              style={{ minWidth: '200px' }}
+            >
+              {getPresetGroups().map((group) => (
+                <optgroup key={group.tag} label={group.tag}>
+                  {group.presets.map((preset) => (
+                    <option key={preset.name} value={preset.name}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {/* Reset icon - only show if colors have been modified from theme defaults */}
+            {selectedPreset && (textColor !== selectedPreset.color || backgroundColor !== selectedPreset.background) && (
+              <button
+                onClick={() => {
+                  if (selectedPreset) {
+                    setTextColor(selectedPreset.color);
+                    setBackgroundColor(selectedPreset.background);
+                  }
+                }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '16px',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: '3px',
+                  width: '24px',
+                  height: '24px'
+                }}
+                title="Reset colors to theme defaults"
+              >
+                🔄
+              </button>
+            )}
+          </div>
         
         <div>
           <label>Text: </label>
