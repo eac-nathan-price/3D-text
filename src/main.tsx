@@ -9,6 +9,7 @@ import { themes } from './themes';
 import type { Theme } from './themes';
 import { products } from './products';
 import type { Product } from './products';
+import { ThemeGrid } from './ThemeGrid';
 
 /**
  * 3D Text Scene with 3MF Export Capability
@@ -23,7 +24,7 @@ import type { Product } from './products';
  * - All color changes (theme or custom) are reflected in the exported 3MF file
  */
 
-const fonts = ['Federation_Regular.json']; // add more JSON fonts here
+
 
 const App: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -31,8 +32,7 @@ const App: React.FC = () => {
   const [text, setText] = useState('STAR TREK');
   const [selectedFont, setSelectedFont] = useState('Federation_Regular.json');
   
-  // Track if user has modified text from theme default
-  const [userModifiedText, setUserModifiedText] = useState(false);
+
   
   // Theme and color state
   const [selectedTheme, setSelectedTheme] = useState<Theme | null>(null);
@@ -65,24 +65,12 @@ const App: React.FC = () => {
   const pillMeshRef = useRef<THREE.Mesh | null>(null);
   const holeMeshRef = useRef<THREE.Mesh | null>(null);
 
-  // Get unique tags and group themes by tag
-  const getThemeGroups = () => {
-    const allTags = themes.flatMap(theme => theme.tags);
-    const uniqueTags = [...new Set(allTags)].sort();
-    
-    return uniqueTags.map(tag => ({
-      tag,
-      themes: themes.filter(theme => theme.tags.includes(tag))
-    }));
-  };
+
 
   // Apply theme when selected
   // Note: Colors can be customized beyond themes - the 3MF exporter will use the current scene colors
   const applyTheme = (theme: Theme) => {
-    // Only set theme text if user hasn't modified the text, otherwise preserve user's input
-    if (!userModifiedText) {
-      setText(theme.text);
-    }
+    setText(theme.text);
     setSelectedFont(theme.font);
     setSelectedTheme(theme);
     // Update color overrides to match theme colors
@@ -695,94 +683,7 @@ const App: React.FC = () => {
           </select>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <label style={{ 
-            color: '#ecf0f1', 
-            fontSize: '14px', 
-            fontWeight: '600',
-            minWidth: '60px'
-          }}>Theme:</label>
-          <select
-            value={selectedTheme?.name || ''}
-            onChange={(e) => {
-              const theme = themes
-                .find(p => p.name === e.target.value);
-              if (theme) {
-                applyTheme(theme);
-              }
-            }}
-            style={{ 
-              minWidth: '200px',
-              padding: '8px 12px',
-              borderRadius: '6px',
-              border: '1px solid #34495e',
-              background: '#34495e',
-              color: '#ecf0f1',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              outline: 'none',
-              transition: 'all 0.2s ease',
-              boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)'
-            }}
-            onFocus={(e) => {
-              e.target.style.borderColor = '#3498db';
-              e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3), 0 0 0 3px rgba(52,152,219,0.2)';
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = '#34495e';
-              e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3)';
-            }}
-          >
-            {getThemeGroups().map((group) => (
-              <optgroup key={group.tag} label={group.tag}>
-                {group.themes.map((theme) => (
-                  <option key={theme.name} value={theme.name}>
-                    {theme.name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-          {/* Reset icon - only show if colors have been modified from theme defaults */}
-          {selectedTheme && (textColor !== selectedTheme.color || backgroundColor !== selectedTheme.background) && (
-            <button
-              onClick={() => {
-                if (selectedTheme) {
-                  setTextColor(selectedTheme.color);
-                  setBackgroundColor(selectedTheme.background);
-                }
-              }}
-              style={{
-                background: 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '14px',
-                padding: '6px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: '6px',
-                width: '32px',
-                height: '32px',
-                color: 'white',
-                transition: 'all 0.2s ease',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-1px)';
-                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-              }}
-              title="Reset colors to theme defaults"
-            >
-              🔄
-            </button>
-          )}
-        </div>
+
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <label style={{ 
@@ -792,17 +693,7 @@ const App: React.FC = () => {
             minWidth: '60px'
           }}>
             Text: 
-            {userModifiedText && (
-              <span style={{ 
-                fontSize: '11px', 
-                color: '#3498db', 
-                marginLeft: '6px',
-                fontStyle: 'italic',
-                fontWeight: '400'
-              }}>
-                (modified)
-              </span>
-            )}
+
           </label>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input
@@ -810,8 +701,6 @@ const App: React.FC = () => {
               value={text}
               onChange={(e) => {
                 setText(e.target.value);
-                // Mark that user has modified the text
-                setUserModifiedText(true);
                 // Reset protrusion state when text changes
                 setTextProtrusion(null);
               }}
@@ -837,95 +726,11 @@ const App: React.FC = () => {
                 e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3)';
               }}
             />
-            {userModifiedText && selectedTheme && (
-              <button
-                onClick={() => {
-                  setText(selectedTheme.text);
-                  setUserModifiedText(false);
-                  setTextProtrusion(null);
-                }}
-                title="Reset text to theme default"
-                style={{
-                  padding: '6px 10px',
-                  fontSize: '12px',
-                  background: 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontWeight: '600',
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = 'translateY(-1px)';
-                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = 'translateY(0)';
-                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
-                }}
-              >
-                🔄
-              </button>
-            )}
+
           </div>
         </div>
         
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <label style={{ 
-            color: '#ecf0f1', 
-            fontSize: '14px', 
-            fontWeight: '600',
-            minWidth: '60px'
-          }}>Colors:</label>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <input
-              type="color"
-              value={`#${textColor.toString(16).padStart(6, '0')}`}
-              onChange={(e) => setTextColor(parseInt(e.target.value.slice(1), 16))}
-              style={{
-                width: '40px',
-                height: '40px',
-                border: '2px solid #1a252f',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                background: 'none',
-                transition: 'all 0.2s ease'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#3498db';
-                e.target.style.transform = 'scale(1.05)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#1a252f';
-                e.target.style.transform = 'scale(1)';
-              }}
-            />
-            <input
-              type="color"
-              value={`#${backgroundColor.toString(16).padStart(6, '0')}`}
-              onChange={(e) => setBackgroundColor(parseInt(e.target.value.slice(1), 16))}
-              style={{
-                width: '40px',
-                height: '40px',
-                border: '2px solid #1a252f',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                background: 'none',
-                transition: 'all 0.2s ease'
-              }}
-              onFocus={(e) => {
-                e.target.style.borderColor = '#3498db';
-                e.target.style.transform = 'scale(1.05)';
-              }}
-              onBlur={(e) => {
-                e.target.style.borderColor = '#1a252f';
-                e.target.style.transform = 'scale(1)';
-              }}
-            />
-          </div>
-        </div>
+
         
         {/* Download button - only show in debug mode */}
         {isDebugMode() && (
@@ -1079,6 +884,15 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {/* Theme Grid */}
+      <ThemeGrid
+        onThemeSelect={applyTheme}
+        selectedTheme={selectedTheme}
+        selectedProduct={selectedProduct}
+        userText={text}
+      />
+      
       <div ref={mountRef} style={{ flex: 1 }} />
     </div>
   );
