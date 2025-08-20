@@ -12,27 +12,27 @@ if (deleteTtf) {
 
 const fontsDir = './public/fonts';
 
-// Get all TTF files
-const ttfFiles = fs.readdirSync(fontsDir)
-  .filter(file => file.toLowerCase().endsWith('.ttf'));
+// Get all TTF and OTF files
+const fontFiles = fs.readdirSync(fontsDir)
+  .filter(file => file.toLowerCase().endsWith('.ttf') || file.toLowerCase().endsWith('.otf'));
 
-console.log(`Found ${ttfFiles.length} TTF files to convert:`);
-ttfFiles.forEach(file => console.log(`  - ${file}`));
+console.log(`Found ${fontFiles.length} font files to convert:`);
+fontFiles.forEach(file => console.log(`  - ${file}`));
 
-// Convert each TTF file to JSON
-ttfFiles.forEach(ttfFile => {
+// Convert each font file to JSON
+fontFiles.forEach(fontFile => {
   try {
-    const ttfPath = path.join(fontsDir, ttfFile);
-    const jsonFileName = ttfFile.replace(/\.ttf$/i, '.json');
+    const fontPath = path.join(fontsDir, fontFile);
+    const jsonFileName = fontFile.replace(/\.(ttf|otf)$/i, '.json');
     const jsonPath = path.join(fontsDir, jsonFileName);
     
-    console.log(`Converting ${ttfFile} to ${jsonFileName}...`);
+    console.log(`Converting ${fontFile} to ${jsonFileName}...`);
     
-    // Read the TTF file and convert Buffer to ArrayBuffer
-    const buffer = fs.readFileSync(ttfPath);
+    // Read the font file and convert Buffer to ArrayBuffer
+    const buffer = fs.readFileSync(fontPath);
     const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
     
-    // Read and parse the TTF file
+    // Read and parse the font file (TTF or OTF)
     const font = opentype.parse(arrayBuffer);
     
     // Calculate proper scale factor (same as facetype.js)
@@ -152,22 +152,22 @@ ttfFiles.forEach(ttfFile => {
     
     // Write JSON file
     fs.writeFileSync(jsonPath, JSON.stringify(result, null, 2));
-    console.log(`  ✓ Successfully converted ${ttfFile} to ${jsonFileName} (${Object.keys(result.glyphs).length} glyphs)`);
+    console.log(`  ✓ Successfully converted ${fontFile} to ${jsonFileName} (${Object.keys(result.glyphs).length} glyphs)`);
     
     // Delete TTF file if requested
     if (deleteTtf) {
-      fs.unlinkSync(ttfPath);
-      console.log(`  🗑️  Deleted ${ttfFile}`);
+      fs.unlinkSync(fontPath);
+      console.log(`  🗑️  Deleted ${fontFile}`);
     }
     
   } catch (error) {
-    console.error(`  ✗ Error converting ${ttfFile}:`, error.message);
+    console.error(`  ✗ Error converting ${fontFile}:`, error.message);
   }
 });
 
 console.log('\nFont conversion completed!');
 if (deleteTtf) {
-  console.log('TTF files have been deleted as requested.');
+  console.log('Font files have been deleted as requested.');
 } else {
-  console.log('TTF files have been preserved. Use -d or --delete-ttf to delete them after conversion.');
+  console.log('Font files have been preserved. Use -d or --delete-ttf to delete them after conversion.');
 }

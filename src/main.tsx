@@ -27,8 +27,14 @@ const fonts = ['Federation_Regular.json']; // add more JSON fonts here
 
 const App: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
+  // Text and font state
   const [text, setText] = useState('STAR TREK');
-  const [selectedFont, setSelectedFont] = useState(fonts[0]);
+  const [selectedFont, setSelectedFont] = useState('Federation_Regular.json');
+  
+  // Track if user has modified text from theme default
+  const [userModifiedText, setUserModifiedText] = useState(false);
+  
+  // Theme and color state
   const [selectedTheme, setSelectedTheme] = useState<Theme | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
@@ -64,7 +70,10 @@ const App: React.FC = () => {
   // Apply theme when selected
   // Note: Colors can be customized beyond themes - the 3MF exporter will use the current scene colors
   const applyTheme = (theme: Theme) => {
-    setText(theme.text);
+    // Only set theme text if user hasn't modified the text, otherwise preserve user's input
+    if (!userModifiedText) {
+      setText(theme.text);
+    }
     setSelectedFont(theme.font);
     setSelectedTheme(theme);
     // Update color overrides to match theme colors
@@ -663,16 +672,53 @@ const App: React.FC = () => {
           </div>
         
         <div>
-          <label>Text: </label>
-          <input
-            type="text"
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-              // Reset protrusion state when text changes
-              setTextProtrusion(null);
-            }}
-          />
+          <label>
+            Text: 
+            {userModifiedText && (
+              <span style={{ 
+                fontSize: '10px', 
+                color: '#0077ff', 
+                marginLeft: '4px',
+                fontStyle: 'italic'
+              }}>
+                (modified)
+              </span>
+            )}
+          </label>
+          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+            <input
+              type="text"
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+                // Mark that user has modified the text
+                setUserModifiedText(true);
+                // Reset protrusion state when text changes
+                setTextProtrusion(null);
+              }}
+            />
+            {userModifiedText && selectedTheme && (
+              <button
+                onClick={() => {
+                  setText(selectedTheme.text);
+                  setUserModifiedText(false);
+                  setTextProtrusion(null);
+                }}
+                title="Reset text to theme default"
+                style={{
+                  padding: '2px 6px',
+                  fontSize: '12px',
+                  background: '#0077ff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '3px',
+                  cursor: 'pointer'
+                }}
+              >
+                🔄
+              </button>
+            )}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>

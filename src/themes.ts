@@ -32,5 +32,21 @@ export const themes: Theme[] = [
     background: 0x000000,
     text: "STAR TREK",
     tags: ["Star Trek"]
+  },
+  {
+    name: "DS9 Title",
+    font: "DS9_Title.json",
+    color: 0xcccccc,
+    background: 0x000000,
+    text: "STAR TREK",
+    tags: ["Star Trek"]
+  },
+  {
+    name: "Nasa",
+    font: "Nasalization.json",
+    color: 0xff0000,
+    background: 0xffffff,
+    text: "NASA",
+    tags: ["Space"]
   }
 ];
