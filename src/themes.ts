@@ -48,5 +48,13 @@ export const themes: Theme[] = [
     background: 0xffffff,
     text: "NASA",
     tags: ["Space"]
+  },
+  {
+    name: "Highway",
+    font: "HWYGOTH.json",
+    color: 0xffffff,
+    background: 0x44dd44,
+    text: "Highway",
+    tags: ["Misc"]
   }
 ];
