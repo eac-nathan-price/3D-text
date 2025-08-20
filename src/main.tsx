@@ -38,6 +38,9 @@ const App: React.FC = () => {
   const [selectedTheme, setSelectedTheme] = useState<Theme | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   
+  // Control whether to apply additional scaling beyond initial font size
+  const [scaleText, setScaleText] = useState(false);
+  
   // Color override states - these will override theme colors
   const [textColor, setTextColor] = useState<number>(0x0077ff); // Default blue
   const [backgroundColor, setBackgroundColor] = useState<number>(0x000000); // Default black
@@ -47,6 +50,12 @@ const App: React.FC = () => {
     top: boolean;
     bottom: boolean;
   } | null>(null);
+
+  // Check if debug mode is enabled via query parameter
+  const isDebugMode = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.get('debug') === 'true';
+  };
 
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
@@ -104,10 +113,14 @@ const App: React.FC = () => {
     // Initialize with Keychain product
     const keychainProduct = products.find(p => p.name === "Keychain");
     if (keychainProduct) {
-      console.log('Initializing with Keychain product:', keychainProduct);
+      if (isDebugMode()) {
+        console.log('Initializing with Keychain product:', keychainProduct);
+      }
       applyProduct(keychainProduct);
     } else {
-      console.error('Keychain product not found!');
+      if (isDebugMode()) {
+        console.error('Keychain product not found!');
+      }
     }
   }, []);
 
@@ -162,7 +175,9 @@ const App: React.FC = () => {
   // Load JSON font and update text mesh
   useEffect(() => {
     if (!sceneRef.current || !selectedProduct) {
-      console.log('Waiting for scene and product to be ready...');
+      if (isDebugMode()) {
+        console.log('Waiting for scene and product to be ready...');
+      }
       return;
     }
 
@@ -177,11 +192,13 @@ const App: React.FC = () => {
       // Use a more reasonable initial text size that's closer to the target dimensions
       // This prevents the need for extreme scaling
       const initialTextSize = Math.min(selectedProduct.targetSize[0] / 3, selectedProduct.targetSize[1] / 2);
-      console.log('Initial text size calculated:', {
-        targetX: selectedProduct.targetSize[0],
-        targetY: selectedProduct.targetSize[1],
-        initialTextSize: initialTextSize.toFixed(2) + 'mm'
-      });
+      if (isDebugMode()) {
+        console.log('Initial text size calculated:', {
+          targetX: selectedProduct.targetSize[0],
+          targetY: selectedProduct.targetSize[1],
+          initialTextSize: initialTextSize.toFixed(2) + 'mm'
+        });
+      }
       const textGeo = new TextGeometry(text, {
         font,
         size: initialTextSize,
@@ -232,46 +249,62 @@ const App: React.FC = () => {
       textMeshRef.current = textMesh;
       if (sceneRef.current) sceneRef.current.add(textMesh);
 
-      // Apply sizing logic according to product constraints
-      if (textGeo.boundingBox) {
-        const { min, max } = textGeo.boundingBox;
-        const currentWidth = max.x - min.x;
-        const currentHeight = max.y - min.y;
-        
-        console.log('Text dimensions before scaling:', {
-          width: currentWidth.toFixed(2) + 'mm',
-          height: currentHeight.toFixed(2) + 'mm',
-          productConstraints: {
-            minSize: selectedProduct.minSize,
-            targetSize: selectedProduct.targetSize
+              // Apply sizing logic according to product constraints
+        if (textGeo.boundingBox) {
+          const { min, max } = textGeo.boundingBox;
+          const currentWidth = max.x - min.x;
+          const currentHeight = max.y - min.y;
+          
+          if (isDebugMode()) {
+            console.log('Text dimensions before scaling:', {
+              width: currentWidth.toFixed(2) + 'mm',
+              height: currentHeight.toFixed(2) + 'mm',
+              productConstraints: {
+                minSize: selectedProduct.minSize,
+                targetSize: selectedProduct.targetSize
+              }
+            });
           }
-        });
-        
-        // Check if text dimensions are reasonable for the product
-        if (currentWidth > selectedProduct.targetSize[0] * 2) {
-          console.warn('Text is extremely wide! Consider using shorter text or adjusting product constraints.');
+          
+          // Check if text dimensions are reasonable for the product
+          if (currentWidth > selectedProduct.targetSize[0] * 2) {
+            if (isDebugMode()) {
+              console.warn('Text is extremely wide! Consider using shorter text or adjusting product constraints.');
+            }
+          }
+          
+          // Only apply additional scaling if scaleText is enabled
+          if (scaleText) {
+            // Apply the sizing logic according to the specified criteria
+            const scaleFactor = calculateOptimalScale(
+              currentWidth,
+              currentHeight,
+              selectedProduct.minSize,
+              selectedProduct.targetSize
+            );
+            
+            // Apply uniform scaling to maintain aspect ratio (X and Y scale equally)
+            // Z scale remains 1 to preserve the correct text thickness
+            textMesh.scale.set(scaleFactor, scaleFactor, 1);
+            
+            if (isDebugMode()) {
+              console.log(`Text sizing: Current(${currentWidth.toFixed(2)}mm x ${currentHeight.toFixed(2)}mm), Scale: ${scaleFactor.toFixed(3)}, Final(${(currentWidth * scaleFactor).toFixed(2)}mm x ${(currentHeight * scaleFactor).toFixed(2)}mm)`);
+              console.log('Scale factor breakdown:', {
+                targetXScale: selectedProduct.targetSize[0] / currentWidth,
+                minYScale: selectedProduct.minSize[1] / currentHeight,
+                finalScale: scaleFactor
+              });
+            }
+          } else {
+            // Keep initial font size without additional scaling
+            if (isDebugMode()) {
+              console.log('Additional scaling disabled - using initial font size:', {
+                width: currentWidth.toFixed(2) + 'mm',
+                height: currentHeight.toFixed(2) + 'mm'
+              });
+            }
+          }
         }
-        
-        // Apply the sizing logic according to the specified criteria
-        const scaleFactor = calculateOptimalScale(
-          currentWidth,
-          currentHeight,
-          selectedProduct.minSize,
-          selectedProduct.targetSize
-        );
-        
-        // Apply uniform scaling to maintain aspect ratio (X and Y scale equally)
-        // Z scale remains 1 to preserve the correct text thickness
-        textMesh.scale.set(scaleFactor, scaleFactor, 1);
-        
-        console.log(`Text sizing: Current(${currentWidth.toFixed(2)}mm x ${currentHeight.toFixed(2)}mm), Scale: ${scaleFactor.toFixed(3)}, Final(${(currentWidth * scaleFactor).toFixed(2)}mm x ${(currentHeight * scaleFactor).toFixed(2)}mm)`);
-        console.log('Scale factor breakdown:', {
-          targetXScale: selectedProduct.targetSize[0] / currentWidth,
-          targetYScale: selectedProduct.targetSize[1] / currentHeight,
-          minYScale: selectedProduct.minSize[1] / currentHeight,
-          finalScale: scaleFactor
-        });
-      }
 
       // Create pill background
       if (textGeo.boundingBox) {
@@ -398,14 +431,16 @@ const App: React.FC = () => {
           });
           
                      if (protrusionLeft || protrusionRight || protrusionTop || protrusionBottom) {
-             console.warn('Text protrudes beyond pill rounded corners!', {
-               protrusionLeft,
-               protrusionRight,
-               protrusionTop,
-               protrusionBottom,
-               textBounds: { left: textLeft, right: textRight, top: textTop, bottom: textBottom },
-               pillBounds: { left: pillLeft, right: pillRight, top: pillTop, bottom: pillBottom }
-             });
+             if (isDebugMode()) {
+               console.warn('Text protrudes beyond pill rounded corners!', {
+                 protrusionLeft,
+                 protrusionRight,
+                 protrusionTop,
+                 protrusionBottom,
+                 textBounds: { left: textLeft, right: textRight, top: textTop, bottom: textBottom },
+                 pillBounds: { left: pillLeft, right: pillRight, top: pillTop, bottom: pillBottom }
+               });
+             }
              
              // Note: Text color remains unchanged - protrusion is purely informational
            }
@@ -414,37 +449,37 @@ const App: React.FC = () => {
         // Check for protrusion after positioning
         checkTextProtrusion();
         
-        // Add visual representation of the hole if it exists
-        if (leftHole) {
-          // Remove existing hole if it exists
-          if (holeMeshRef.current && sceneRef.current) {
-            sceneRef.current.remove(holeMeshRef.current);
-          }
-          
-          // Create a 3mm diameter, 2mm high cylinder to represent the hole
-          const holeGeometry = new THREE.CylinderGeometry(1.5, 1.5, 2, 16); // radius=1.5mm, height=2mm
-          const holeMaterial = new THREE.MeshPhongMaterial({ 
-            color: 0x666666, // Dark grey to represent the hole
-            transparent: true,
-            opacity: 0.7,
-            name: 'HoleMaterial'
-          });
-          const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
-          
-          // Position the hole at x1 + 2.5 (where x1 is the left edge of the pill)
-          const holeX = -width / 2 + 2.5;
-          const holeY = 0; // Center in Y direction
-          const holeZ = 1; // Center in Z direction (pill goes from z=0 to z=2)
-          
-          holeMesh.position.set(holeX, holeY, holeZ);
-          
-          // Rotate the hole 90 degrees around X-axis so it goes through the pill horizontally
-          // This makes the cylinder lie flat (parallel to the pill's top/bottom faces)
-          holeMesh.rotation.x = Math.PI / 2;
-          
-          holeMeshRef.current = holeMesh; // Store the hole mesh
-          if (sceneRef.current) sceneRef.current.add(holeMesh);
-        }
+                 // Add visual representation of the hole if it exists (for display only - not included in 3MF export)
+         if (leftHole) {
+           // Remove existing hole if it exists
+           if (holeMeshRef.current && sceneRef.current) {
+             sceneRef.current.remove(holeMeshRef.current);
+           }
+           
+           // Create a 3mm diameter, 2mm high cylinder to represent the hole
+           const holeGeometry = new THREE.CylinderGeometry(1.5, 1.5, 2, 16); // radius=1.5mm, height=2mm
+           const holeMaterial = new THREE.MeshPhongMaterial({ 
+             color: 0x666666, // Dark grey to represent the hole
+             transparent: true,
+             opacity: 0.7,
+             name: 'HoleMaterial' // This name is used to filter it out of 3MF export
+           });
+           const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
+           
+           // Position the hole at x1 + 2.5 (where x1 is the left edge of the pill)
+           const holeX = -width / 2 + 2.5;
+           const holeY = 0; // Center in Y direction
+           const holeZ = 1; // Center in Z direction (pill goes from z=0 to z=2)
+           
+           holeMesh.position.set(holeX, holeY, holeZ);
+           
+           // Rotate the hole 90 degrees around X-axis so it goes through the pill horizontally
+           // This makes the cylinder lie flat (parallel to the pill's top/bottom faces)
+           holeMesh.rotation.x = Math.PI / 2;
+           
+           holeMeshRef.current = holeMesh; // Store the hole mesh
+           if (sceneRef.current) sceneRef.current.add(holeMesh);
+         }
       }
     });
   }, [text, selectedFont, textColor, backgroundColor, selectedProduct]);
@@ -504,13 +539,17 @@ const App: React.FC = () => {
   // Manual function to check for text protrusion (can be called from UI)
   const checkTextProtrusionManually = () => {
     if (!textMeshRef.current || !pillMeshRef.current) {
-      console.log('No text or pill mesh available for protrusion check');
+      if (isDebugMode()) {
+        console.log('No text or pill mesh available for protrusion check');
+      }
       return;
     }
     
     const textBBox = (textMeshRef.current.geometry as any).boundingBox;
     if (!textBBox) {
-      console.log('No bounding box available for text geometry');
+      if (isDebugMode()) {
+        console.log('No bounding box available for text geometry');
+      }
       return;
     }
     
@@ -527,7 +566,9 @@ const App: React.FC = () => {
     // Get pill dimensions from the pill mesh
     const pillBBox = (pillMeshRef.current.geometry as any).boundingBox;
     if (!pillBBox) {
-      console.log('No bounding box available for pill geometry');
+      if (isDebugMode()) {
+        console.log('No bounding box available for pill geometry');
+      }
       return;
     }
     
@@ -547,12 +588,14 @@ const App: React.FC = () => {
     const protrusionTop = textTop > (pillTop - cornerRadius);
     const protrusionBottom = textBottom < (pillBottom + cornerRadius);
     
-    console.log('Manual protrusion check:', {
-      textBounds: { left: textLeft, right: textRight, top: textTop, bottom: textBottom },
-      pillBounds: { left: pillLeft, right: pillRight, top: pillTop, bottom: pillBottom },
-      cornerRadius,
-      protrusion: { left: protrusionLeft, right: protrusionRight, top: protrusionTop, bottom: protrusionBottom }
-    });
+    if (isDebugMode()) {
+      console.log('Manual protrusion check:', {
+        textBounds: { left: textLeft, right: textRight, top: textTop, bottom: textBottom },
+        pillBounds: { left: pillLeft, right: pillRight, top: pillTop, bottom: pillBottom },
+        cornerRadius,
+        protrusion: { left: protrusionLeft, right: protrusionRight, top: protrusionTop, bottom: protrusionBottom }
+      });
+    }
     
     return { protrusionLeft, protrusionRight, protrusionTop, protrusionBottom };
   };
@@ -576,7 +619,9 @@ const App: React.FC = () => {
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error exporting 3MF:', error);
+      if (isDebugMode()) {
+        console.error('Error exporting 3MF:', error);
+      }
       alert('Error exporting 3MF file. Check console for details.');
     }
   };
@@ -588,19 +633,29 @@ const App: React.FC = () => {
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',
+        backgroundColor: '#222222',
+        fontFamily: '"Press Start 2P", system-ui',
       }}
     >
       <div
         style={{
-          padding: '8px',
-          background: '#ddd',
+          padding: '16px 24px',
+          background: 'linear-gradient(135deg, #2c3e50 0%, #34495e 100%)',
+          borderBottom: '1px solid #34495e',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           display: 'flex',
-          gap: '12px',
+          gap: '20px',
           alignItems: 'center',
+          flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label>Product: </label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <label style={{ 
+            color: '#ecf0f1', 
+            fontSize: '14px', 
+            fontWeight: '600',
+            minWidth: '60px'
+          }}>Product:</label>
           <select
             value={selectedProduct?.name || ''}
             onChange={(e) => {
@@ -609,7 +664,28 @@ const App: React.FC = () => {
                 applyProduct(product);
               }
             }}
-            style={{ minWidth: '150px' }}
+            style={{ 
+              minWidth: '150px',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              border: '1px solid #34495e',
+              background: '#34495e',
+              color: '#ecf0f1',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              outline: 'none',
+              transition: 'all 0.2s ease',
+              boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)'
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#3498db';
+              e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3), 0 0 0 3px rgba(52,152,219,0.2)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = '#34495e';
+              e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3)';
+            }}
           >
             {products.map((product) => (
               <option key={product.name} value={product.name}>
@@ -619,73 +695,116 @@ const App: React.FC = () => {
           </select>
         </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <label>Theme: </label>
-            <select
-              value={selectedTheme?.name || ''}
-              onChange={(e) => {
-                const theme = themes
-                  .find(p => p.name === e.target.value);
-                if (theme) {
-                  applyTheme(theme);
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <label style={{ 
+            color: '#ecf0f1', 
+            fontSize: '14px', 
+            fontWeight: '600',
+            minWidth: '60px'
+          }}>Theme:</label>
+          <select
+            value={selectedTheme?.name || ''}
+            onChange={(e) => {
+              const theme = themes
+                .find(p => p.name === e.target.value);
+              if (theme) {
+                applyTheme(theme);
+              }
+            }}
+            style={{ 
+              minWidth: '200px',
+              padding: '8px 12px',
+              borderRadius: '6px',
+              border: '1px solid #34495e',
+              background: '#34495e',
+              color: '#ecf0f1',
+              fontSize: '14px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              outline: 'none',
+              transition: 'all 0.2s ease',
+              boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)'
+            }}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#3498db';
+              e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3), 0 0 0 3px rgba(52,152,219,0.2)';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = '#34495e';
+              e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3)';
+            }}
+          >
+            {getThemeGroups().map((group) => (
+              <optgroup key={group.tag} label={group.tag}>
+                {group.themes.map((theme) => (
+                  <option key={theme.name} value={theme.name}>
+                    {theme.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          {/* Reset icon - only show if colors have been modified from theme defaults */}
+          {selectedTheme && (textColor !== selectedTheme.color || backgroundColor !== selectedTheme.background) && (
+            <button
+              onClick={() => {
+                if (selectedTheme) {
+                  setTextColor(selectedTheme.color);
+                  setBackgroundColor(selectedTheme.background);
                 }
               }}
-              style={{ minWidth: '200px' }}
+              style={{
+                background: 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '14px',
+                padding: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: '6px',
+                width: '32px',
+                height: '32px',
+                color: 'white',
+                transition: 'all 0.2s ease',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-1px)';
+                e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+              }}
+              title="Reset colors to theme defaults"
             >
-              {getThemeGroups().map((group) => (
-                <optgroup key={group.tag} label={group.tag}>
-                  {group.themes.map((theme) => (
-                    <option key={theme.name} value={theme.name}>
-                      {theme.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            {/* Reset icon - only show if colors have been modified from theme defaults */}
-            {selectedTheme && (textColor !== selectedTheme.color || backgroundColor !== selectedTheme.background) && (
-              <button
-                onClick={() => {
-                  if (selectedTheme) {
-                    setTextColor(selectedTheme.color);
-                    setBackgroundColor(selectedTheme.background);
-                  }
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '16px',
-                  padding: '2px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: '3px',
-                  width: '24px',
-                  height: '24px'
-                }}
-                title="Reset colors to theme defaults"
-              >
-                🔄
-              </button>
-            )}
-          </div>
+              🔄
+            </button>
+          )}
+        </div>
         
-        <div>
-          <label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <label style={{ 
+            color: '#ecf0f1', 
+            fontSize: '14px', 
+            fontWeight: '600',
+            minWidth: '60px'
+          }}>
             Text: 
             {userModifiedText && (
               <span style={{ 
-                fontSize: '10px', 
-                color: '#0077ff', 
-                marginLeft: '4px',
-                fontStyle: 'italic'
+                fontSize: '11px', 
+                color: '#3498db', 
+                marginLeft: '6px',
+                fontStyle: 'italic',
+                fontWeight: '400'
               }}>
                 (modified)
               </span>
             )}
           </label>
-          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input
               type="text"
               value={text}
@@ -695,6 +814,27 @@ const App: React.FC = () => {
                 setUserModifiedText(true);
                 // Reset protrusion state when text changes
                 setTextProtrusion(null);
+              }}
+              style={{
+                padding: '8px 12px',
+                borderRadius: '6px',
+                border: '1px solid #34495e',
+                background: '#34495e',
+                color: '#ecf0f1',
+                fontSize: '14px',
+                fontWeight: '500',
+                outline: 'none',
+                transition: 'all 0.2s ease',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)',
+                minWidth: '120px'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#3498db';
+                e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3), 0 0 0 3px rgba(52,152,219,0.2)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#34495e';
+                e.target.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.3)';
               }}
             />
             {userModifiedText && selectedTheme && (
@@ -706,13 +846,24 @@ const App: React.FC = () => {
                 }}
                 title="Reset text to theme default"
                 style={{
-                  padding: '2px 6px',
+                  padding: '6px 10px',
                   fontSize: '12px',
-                  background: '#0077ff',
+                  background: 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)',
                   color: 'white',
                   border: 'none',
-                  borderRadius: '3px',
-                  cursor: 'pointer'
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
                 }}
               >
                 🔄
@@ -720,50 +871,164 @@ const App: React.FC = () => {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <label>Text Color:</label>
+        
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <label style={{ 
+            color: '#ecf0f1', 
+            fontSize: '14px', 
+            fontWeight: '600',
+            minWidth: '60px'
+          }}>Colors:</label>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input
               type="color"
               value={`#${textColor.toString(16).padStart(6, '0')}`}
               onChange={(e) => setTextColor(parseInt(e.target.value.slice(1), 16))}
+              style={{
+                width: '40px',
+                height: '40px',
+                border: '2px solid #1a252f',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                background: 'none',
+                transition: 'all 0.2s ease'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#3498db';
+                e.target.style.transform = 'scale(1.05)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#1a252f';
+                e.target.style.transform = 'scale(1)';
+              }}
             />
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <label>Background Color:</label>
             <input
               type="color"
               value={`#${backgroundColor.toString(16).padStart(6, '0')}`}
               onChange={(e) => setBackgroundColor(parseInt(e.target.value.slice(1), 16))}
+              style={{
+                width: '40px',
+                height: '40px',
+                border: '2px solid #1a252f',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                background: 'none',
+                transition: 'all 0.2s ease'
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#3498db';
+                e.target.style.transform = 'scale(1.05)';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#1a252f';
+                e.target.style.transform = 'scale(1)';
+              }}
             />
           </div>
         </div>
-        <button onClick={export3MF}>Download 3MF</button>
         
-        {/* Debug information display */}
-        {selectedProduct && textMeshRef.current && (
+        {/* Download button - only show in debug mode */}
+        {isDebugMode() && (
+          <button 
+            onClick={export3MF}
+            style={{
+              padding: '10px 20px',
+              background: 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
+              minWidth: '140px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 6px 12px rgba(0,0,0,0.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+            }}
+          >
+            💾 Download 3MF
+          </button>
+        )}
+        
+        {/* Additional scaling checkbox - only show in debug mode */}
+        {isDebugMode() && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <label style={{ 
+              color: '#ecf0f1', 
+              fontSize: '14px', 
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              cursor: 'pointer'
+            }}>
+              <input
+                type="checkbox"
+                checked={scaleText}
+                onChange={(e) => setScaleText(e.target.checked)}
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  accentColor: '#3498db',
+                  cursor: 'pointer'
+                }}
+              />
+              Enable Additional Scaling
+            </label>
+          </div>
+        )}
+        
+        {/* Debug information display - only show in debug mode */}
+        {isDebugMode() && selectedProduct && textMeshRef.current && (
           <div style={{ 
-            background: '#f0f0f0', 
-            padding: '8px', 
-            borderRadius: '4px', 
-            fontSize: '12px',
-            fontFamily: 'monospace'
+            background: 'linear-gradient(135deg, #ecf0f1 0%, #bdc3c7 100%)',
+            padding: '16px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            fontFamily: '"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
+            border: '1px solid #bdc3c7',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.1)',
+            minWidth: '300px',
+            maxWidth: '400px'
           }}>
-            <div><strong>Product:</strong> {selectedProduct.name}</div>
-            <div><strong>Constraints:</strong> Min: [{selectedProduct.minSize[0]}mm, {selectedProduct.minSize[1]}mm] | Target: [{selectedProduct.targetSize[0]}mm, {selectedProduct.targetSize[1]}mm]</div>
+            <div style={{ marginBottom: '8px', fontWeight: '600', color: '#2c3e50' }}>
+              <strong>Product:</strong> {selectedProduct.name}
+            </div>
+            <div style={{ marginBottom: '8px', color: '#34495e' }}>
+              <strong>Constraints:</strong> Min: [{selectedProduct.minSize[0]}mm, {selectedProduct.minSize[1]}mm] | Target: [{selectedProduct.targetSize[0]}mm, {selectedProduct.targetSize[1]}mm]
+            </div>
+            <div style={{ marginBottom: '8px', color: '#34495e' }}>
+              <strong>Scaling:</strong> {scaleText ? '✅ Enabled' : '❌ Disabled (using initial font size)'}
+            </div>
             {textMeshRef.current && (
               <>
-                <div><strong>Text Scale:</strong> {textMeshRef.current.scale.x.toFixed(3)}x</div>
-                <div><strong>Final Text Size:</strong> {
-                  ((textMeshRef.current.geometry as any).boundingBox ? 
-                    `${((textMeshRef.current.geometry as any).boundingBox.max.x - (textMeshRef.current.geometry as any).boundingBox.min.x) * textMeshRef.current.scale.x}mm x ${((textMeshRef.current.geometry as any).boundingBox.max.y - (textMeshRef.current.geometry as any).boundingBox.min.y) * textMeshRef.current.scale.y}mm` 
-                    : 'Calculating...'
-                  )
-                }</div>
+                <div style={{ marginBottom: '8px', color: '#34495e' }}>
+                  <strong>Text Scale:</strong> {scaleText ? `${textMeshRef.current.scale.x.toFixed(3)}x` : '1.000x (initial size)'}
+                </div>
+                <div style={{ marginBottom: '12px', color: '#34495e' }}>
+                  <strong>Final Text Size:</strong> { 
+                    ((textMeshRef.current.geometry as any).boundingBox ? 
+                      `${((textMeshRef.current.geometry as any).boundingBox.max.x - (textMeshRef.current.geometry as any).boundingBox.min.x) * textMeshRef.current.scale.x}mm x ${((textMeshRef.current.geometry as any).boundingBox.max.y - (textMeshRef.current.geometry as any).boundingBox.min.y) * textMeshRef.current.scale.y}mm` 
+                      : 'Calculating...'
+                    )
+                  }
+                </div>
                 {textProtrusion && (
                   <div style={{ 
-                    color: (textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) ? '#ff6600' : '#00aa00',
-                    fontWeight: 'bold'
+                    color: (textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) ? '#e74c3c' : '#27ae60',
+                    fontWeight: '600',
+                    marginBottom: '12px',
+                    padding: '8px',
+                    background: (textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) ? 'rgba(231, 76, 60, 0.1)' : 'rgba(39, 174, 96, 0.1)',
+                    borderRadius: '6px',
+                    border: `1px solid ${(textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) ? '#e74c3c' : '#27ae60'}`
                   }}>
                     <strong>Protrusion:</strong> {
                       (textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) 
@@ -771,14 +1036,14 @@ const App: React.FC = () => {
                         : `✅ Text fits within pill bounds`
                     }
                     {(textProtrusion.left || textProtrusion.right || textProtrusion.top || textProtrusion.bottom) && (
-                      <div style={{ fontSize: '10px', marginLeft: '8px' }}>
+                      <div style={{ fontSize: '11px', marginLeft: '8px', marginTop: '4px' }}>
                         {textProtrusion.left && '← Left '}
                         {textProtrusion.right && '→ Right '}
                         {textProtrusion.top && '↑ Top '}
                         {textProtrusion.bottom && '↓ Bottom '}
                       </div>
                     )}
-                    <div style={{ fontSize: '9px', color: '#666', marginTop: '2px' }}>
+                    <div style={{ fontSize: '10px', color: '#7f8c8d', marginTop: '6px' }}>
                       Note: Colors remain unchanged - protrusion is informational only
                     </div>
                   </div>
@@ -786,18 +1051,28 @@ const App: React.FC = () => {
                 <button 
                   onClick={checkTextProtrusionManually}
                   style={{ 
-                    marginTop: '4px', 
-                    padding: '2px 6px', 
-                    fontSize: '10px',
-                    background: '#0077ff',
+                    padding: '8px 12px', 
+                    fontSize: '12px',
+                    background: 'linear-gradient(135deg, #3498db 0%, #2980b9 100%)',
                     color: 'white',
                     border: 'none',
-                    borderRadius: '3px',
-                    cursor: 'pointer'
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontWeight: '600',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
                   }}
                   title="Manually check for text protrusion beyond pill corners (informational only - colors unchanged)"
                 >
-                  Check Protrusion
+                  🔍 Check Protrusion
                 </button>
               </>
             )}

@@ -40,7 +40,7 @@ export const products: Product[] = [
     background: {
       thickness: 2,
       shape: "pill",
-      padding: 2
+      padding: 4
     },
     text: {
       thickness: 1,
