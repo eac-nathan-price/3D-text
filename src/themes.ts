@@ -47,7 +47,7 @@ export const themes: Theme[] = [
     color: 0xff0000,
     background: 0xffffff,
     text: "NASA",
-    tags: ["Space"]
+    tags: ["Misc"]
   },
   {
     name: "Highway",
@@ -55,6 +55,22 @@ export const themes: Theme[] = [
     color: 0xffffff,
     background: 0x44dd44,
     text: "Highway",
+    tags: ["Misc"]
+  },
+  {
+    name: "Adventure Time Title",
+    font: "AdventureTimeLogo.json",
+    color: 0xff0000,
+    background: 0x6cbfff,
+    text: "ADVENTURE TIME",
+    tags: ["Misc"]
+  },
+  {
+    name: "Adventure Time Credits",
+    font: "Thunderman.json",
+    color: 0x000000,
+    background: 0x88ff88,
+    text: "ADVENTURE TIME",
     tags: ["Misc"]
   }
 ];
