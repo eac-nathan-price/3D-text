@@ -35,40 +35,124 @@ ttfFiles.forEach(ttfFile => {
     // Read and parse the TTF file
     const font = opentype.parse(arrayBuffer);
     
-    // Extract font information
-    const fontData = {
+    // Calculate proper scale factor (same as facetype.js)
+    const scale = (1000 * 100) / ((font.unitsPerEm || 2048) * 72);
+    
+    // Create the font data structure that Three.js expects
+    const result = {
+      glyphs: {},
       familyName: font.names.fontFamily?.en || font.names.fontFamily || 'Unknown',
-      subfamilyName: font.names.fontSubfamily?.en || font.names.fontSubfamily || 'Unknown',
-      fullName: font.names.fullName?.en || font.names.fullName || 'Unknown',
-      postScriptName: font.names.postScriptName?.en || font.names.postScriptName || 'Unknown',
-      unitsPerEm: font.unitsPerEm,
-      ascender: font.ascender,
-      descender: font.descender,
-      underlinePosition: font.underlinePosition,
-      underlineThickness: font.underlineThickness,
-      numGlyphs: font.numGlyphs,
-      created: font.names.created ? new Date(font.names.created).toISOString() : null,
-      modified: font.names.modified ? new Date(font.names.modified).toISOString() : null,
-      glyphs: []
+      ascender: Math.round(font.ascender * scale),
+      descender: Math.round(font.descender * scale),
+      underlinePosition: Math.round((font.tables.post?.underlinePosition || -185) * scale),
+      underlineThickness: Math.round((font.tables.post?.underlineThickness || 28) * scale),
+      boundingBox: {
+        yMin: Math.round((font.tables.head?.yMin || font.descender) * scale),
+        xMin: Math.round((font.tables.head?.xMin || -100) * scale),
+        yMax: Math.round((font.tables.head?.yMax || font.ascender) * scale),
+        xMax: Math.round((font.tables.head?.xMax || 100) * scale)
+      },
+      resolution: 1000,
+      original_font_information: font.tables.name || {
+        format: 0,
+        fontFamily: font.names.fontFamily?.en || font.names.fontFamily || 'Unknown',
+        fontSubfamily: font.names.fontSubfamily?.en || font.names.fontSubfamily || 'Regular',
+        fullName: font.names.fullName?.en || font.names.fullName || 'Unknown',
+        postScriptName: font.names.postScriptName?.en || font.names.postScriptName || 'Unknown',
+        version: font.names.version?.en || font.names.version || '1.0',
+        uniqueID: font.names.uniqueID?.en || font.names.uniqueID || 'Unknown'
+      }
     };
     
-    // Extract glyph information (first 100 glyphs to keep file size manageable)
-    const maxGlyphs = Math.min(100, font.numGlyphs);
-    for (let i = 0; i < maxGlyphs; i++) {
+    // Set CSS properties
+    if (font.names.fontSubfamily?.en?.toLowerCase().indexOf('bold') > -1) {
+      result.cssFontWeight = 'bold';
+    } else {
+      result.cssFontWeight = 'normal';
+    }
+    
+    if (font.names.fontSubfamily?.en?.toLowerCase().indexOf('italic') > -1) {
+      result.cssFontStyle = 'italic';
+    } else {
+      result.cssFontStyle = 'normal';
+    }
+    
+    // Process all glyphs using the facetype.js approach
+    for (let i = 0; i < font.numGlyphs; i++) {
       const glyph = font.glyphs.get(i);
-      if (glyph) {
-        fontData.glyphs.push({
-          name: glyph.name,
-          unicode: glyph.unicode,
-          advanceWidth: glyph.advanceWidth,
-          path: glyph.getPath ? glyph.getPath().toPathData() : null
+      if (!glyph) continue;
+      
+      const unicodes = [];
+      
+      // Collect all unicode values for this glyph
+      if (glyph.unicode !== undefined) {
+        unicodes.push(glyph.unicode);
+      }
+      if (glyph.unicodes && glyph.unicodes.length) {
+        glyph.unicodes.forEach(function(unicode) {
+          if (unicodes.indexOf(unicode) == -1) {
+            unicodes.push(unicode);
+          }
         });
       }
+      
+      // Process each unicode for this glyph
+      unicodes.forEach(function(unicode) {
+        const glyphCharacter = String.fromCharCode(unicode);
+        
+        // Create glyph data in the format Three.js expects
+        const token = {
+          ha: Math.round(glyph.advanceWidth * scale),
+          x_min: Math.round(glyph.xMin * scale),
+          x_max: Math.round(glyph.xMax * scale),
+          o: ""
+        };
+        
+        // Process path commands directly (same as facetype.js)
+        if (glyph.path && glyph.path.commands) {
+          glyph.path.commands.forEach(function(command, i) {
+            // Convert 'C' to 'b' for Three.js compatibility
+            if (command.type.toLowerCase() === "c") {
+              command.type = "b";
+            }
+            
+            // Add command type (lowercase)
+            token.o += command.type.toLowerCase();
+            token.o += " ";
+            
+            // Add coordinates with proper spacing
+            if (command.x !== undefined && command.y !== undefined) {
+              token.o += Math.round(command.x * scale);
+              token.o += " ";
+              token.o += Math.round(command.y * scale);
+              token.o += " ";
+            }
+            
+            // Add control points for curves
+            if (command.x1 !== undefined && command.y1 !== undefined) {
+              token.o += Math.round(command.x1 * scale);
+              token.o += " ";
+              token.o += Math.round(command.y1 * scale);
+              token.o += " ";
+            }
+            
+            if (command.x2 !== undefined && command.y2 !== undefined) {
+              token.o += Math.round(command.x2 * scale);
+              token.o += " ";
+              token.o += Math.round(command.y2 * scale);
+              token.o += " ";
+            }
+          });
+        }
+        
+        // Store the glyph
+        result.glyphs[glyphCharacter] = token;
+      });
     }
     
     // Write JSON file
-    fs.writeFileSync(jsonPath, JSON.stringify(fontData, null, 2));
-    console.log(`  ✓ Successfully converted ${ttfFile} to ${jsonFileName}`);
+    fs.writeFileSync(jsonPath, JSON.stringify(result, null, 2));
+    console.log(`  ✓ Successfully converted ${ttfFile} to ${jsonFileName} (${Object.keys(result.glyphs).length} glyphs)`);
     
     // Delete TTF file if requested
     if (deleteTtf) {

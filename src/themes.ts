@@ -18,6 +18,14 @@ export interface Theme {
 
 export const themes: Theme[] = [
   {
+    name: "TOS Title",
+    font: "TOS_Title.json",
+    color: 0xffff00,
+    background: 0x000000,
+    text: "STAR TREK",
+    tags: ["Star Trek"]
+  },
+  {
     name: "TNG Title",
     font: "Federation_Regular.json",
     color: 0x0077ff,
