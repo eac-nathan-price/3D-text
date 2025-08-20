@@ -348,7 +348,18 @@ const App: React.FC = () => {
           // Since TextGeometry origin is at its center, we need to offset by half the text width
           const textCenterX = textStartX + (textWidth / 2);
           textMesh.position.x = textCenterX;
+        } else {
+          // If no left hole, center the text on the pill
+          textMesh.position.x = 0;
         }
+        
+        console.log('Text positioning:', {
+          textX: textMesh.position.x.toFixed(2),
+          textZ: textMesh.position.z.toFixed(2),
+          pillWidth: width.toFixed(2),
+          textWidth: textWidth.toFixed(2),
+          hasLeftHole: !!leftHole
+        });
         
         // Check if text protrudes beyond the pill's rounded corners
         const checkTextProtrusion = () => {
@@ -423,15 +434,26 @@ const App: React.FC = () => {
           const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
           
           // Position the hole at x1 + 2.5 (where x1 is the left edge of the pill)
+          // The hole should go through the pill horizontally, so it needs to be positioned correctly
           const holeX = -width / 2 + 2.5;
           const holeY = 0; // Center in Y direction
-          const holeZ = 1; // Center in Z direction (pill goes from z=0 to z=2)
+          const holeZ = selectedProduct.background.thickness / 2; // Center in Z direction (pill goes from z=0 to z=2)
           
           holeMesh.position.set(holeX, holeY, holeZ);
           
           // Rotate the hole 90 degrees around X-axis so it goes through the pill horizontally
           // This makes the cylinder lie flat (parallel to the pill's top/bottom faces)
+          // The cylinder should be rotated to go through the pill from left to right
           holeMesh.rotation.x = Math.PI / 2;
+          
+          console.log('Hole positioning:', {
+            holeX: holeX.toFixed(2),
+            holeY: holeY.toFixed(2), 
+            holeZ: holeZ.toFixed(2),
+            pillWidth: width.toFixed(2),
+            pillHeight: height.toFixed(2),
+            pillThickness: selectedProduct.background.thickness.toFixed(2)
+          });
           
           holeMeshRef.current = holeMesh; // Store the hole mesh
           if (sceneRef.current) sceneRef.current.add(holeMesh);
