@@ -31,17 +31,141 @@ function fixFontPath(pathData) {
     return pathData;
   }
   
-  // For letters that should be solid, keep only the outer path
-  // The outer path is typically the first one and has the largest bounding box
-  const outerPath = subpaths[0];
+  // Analyze subpaths to determine which are legitimate holes vs problematic inner paths
+  const analyzedPaths = analyzeSubpaths(subpaths);
   
-  // Clean up the path and ensure it's closed
-  let fixedPath = outerPath.trim();
-  if (!fixedPath.endsWith('z')) {
-    fixedPath += ' z';
+  // Build the fixed path with outer boundary and legitimate holes
+  let fixedPath = '';
+  
+  // Always start with the outer boundary
+  if (analyzedPaths.outerBoundary) {
+    fixedPath += analyzedPaths.outerBoundary.trim();
+    if (!fixedPath.endsWith('z')) {
+      fixedPath += ' z';
+    }
+  }
+  
+  // Add legitimate holes (these should be subtracted from the outer boundary)
+  for (const hole of analyzedPaths.legitimateHoles) {
+    fixedPath += ' ' + hole.trim();
+    if (!hole.endsWith('z')) {
+      fixedPath += ' z';
+    }
   }
   
   return fixedPath;
+}
+
+// Function to analyze subpaths and determine which are legitimate holes
+function analyzeSubpaths(subpaths) {
+  if (subpaths.length === 0) return { outerBoundary: null, legitimateHoles: [] };
+  
+  // Calculate bounding box for each subpath to determine size and position
+  const pathInfo = subpaths.map((path, index) => {
+    const bounds = calculateBoundingBox(path);
+    return {
+      index,
+      path,
+      bounds,
+      area: (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY)
+    };
+  });
+  
+  // Sort by area (largest first) - the largest is typically the outer boundary
+  pathInfo.sort((a, b) => b.area - a.area);
+  
+  const outerBoundary = pathInfo[0].path;
+  const legitimateHoles = [];
+  
+  // Analyze remaining paths to determine if they're legitimate holes
+  for (let i = 1; i < pathInfo.length; i++) {
+    const currentPath = pathInfo[i];
+    const currentBounds = currentPath.bounds;
+    
+    // Check if this path is contained within the outer boundary
+    const isContained = isPathContained(currentBounds, pathInfo[0].bounds);
+    
+    // Check if this path is significantly smaller (likely a legitimate hole)
+    const sizeRatio = currentPath.area / pathInfo[0].area;
+    const isSignificantlySmaller = sizeRatio < 0.3; // Hole should be less than 30% of outer area
+    
+    // Check if this path has a reasonable size (not too tiny, not too large)
+    const isReasonableSize = sizeRatio > 0.01 && sizeRatio < 0.8;
+    
+    if (isContained && isSignificantlySmaller && isReasonableSize) {
+      // This looks like a legitimate hole (e.g., center of O, B, D)
+      legitimateHoles.push(currentPath.path);
+    } else {
+      // This might be a problematic inner path that causes "inside out" issues
+      // We'll skip it to avoid creating hollow letters
+      console.log(`    ⚠️  Skipping potentially problematic inner path (area ratio: ${sizeRatio.toFixed(3)})`);
+    }
+  }
+  
+  return {
+    outerBoundary,
+    legitimateHoles
+  };
+}
+
+// Function to calculate bounding box of a path
+function calculateBoundingBox(pathData) {
+  const commands = pathData.match(/[MLHVCSQTAZ][^MLHVCSQTAZ]*/g) || [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  
+  let currentX = 0, currentY = 0;
+  
+  for (const cmd of commands) {
+    const type = cmd[0];
+    const coords = cmd.slice(1).trim().split(/[\s,]+/).filter(s => s !== '');
+    
+    switch (type) {
+      case 'M': // Move to (absolute)
+      case 'L': // Line to (absolute)
+        if (coords.length >= 2) {
+          const x = parseFloat(coords[0]);
+          const y = parseFloat(coords[1]);
+          currentX = x;
+          currentY = y;
+          updateBounds(x, y);
+        }
+        break;
+      case 'H': // Horizontal line (absolute)
+        if (coords.length >= 1) {
+          const x = parseFloat(coords[0]);
+          currentX = x;
+          updateBounds(x, currentY);
+        }
+        break;
+      case 'V': // Vertical line (absolute)
+        if (coords.length >= 1) {
+          const y = parseFloat(coords[0]);
+          currentY = y;
+          updateBounds(currentX, y);
+        }
+        break;
+      case 'Z': // Close path
+        break;
+      // Add more cases for other SVG path commands if needed
+    }
+  }
+  
+  function updateBounds(x, y) {
+    minX = Math.min(minX, x);
+    minY = Math.min(minY, y);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y);
+  }
+  
+  return { minX, minY, maxX, maxY };
+}
+
+// Function to check if one bounding box is contained within another
+function isPathContained(innerBounds, outerBounds) {
+  return innerBounds.minX >= outerBounds.minX &&
+         innerBounds.minY >= outerBounds.minY &&
+         innerBounds.maxX <= outerBounds.maxX &&
+         innerBounds.maxY <= outerBounds.maxY;
 }
 
 // Function to fix a specific font file with optional character filtering
@@ -212,4 +336,4 @@ if (require.main === module) {
   fixFontFile(fontPath, targetChars);
 }
 
-module.exports = { fixFontPath, fixFontFile, restoreFontFile };
+module.exports = { fixFontPath, fixFontFile, restoreFontFile, analyzeSubpaths, calculateBoundingBox, isPathContained };
