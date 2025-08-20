@@ -29,7 +29,7 @@ import { ThemeGrid } from './ThemeGrid';
 const App: React.FC = () => {
   const mountRef = useRef<HTMLDivElement>(null);
   // Text and font state
-  const [text, setText] = useState('STAR TREK');
+  const [text, setText] = useState('Your Name');
   const [selectedFont, setSelectedFont] = useState('Federation_Regular.json');
   
 
@@ -70,7 +70,7 @@ const App: React.FC = () => {
   // Apply theme when selected
   // Note: Colors can be customized beyond themes - the 3MF exporter will use the current scene colors
   const applyTheme = (theme: Theme) => {
-    setText(theme.text);
+    // Don't change the user's text - keep their input
     setSelectedFont(theme.font);
     setSelectedTheme(theme);
     // Update color overrides to match theme colors
@@ -187,13 +187,16 @@ const App: React.FC = () => {
           initialTextSize: initialTextSize.toFixed(2) + 'mm'
         });
       }
-      const textGeo = new TextGeometry(text, {
-        font,
-        size: initialTextSize,
-        depth: selectedProduct.text.thickness + selectedProduct.text.overlap, // Use product thickness + overlap
-        curveSegments: 12,
-        bevelEnabled: false,
-      });
+             // Apply caps transformation if theme requires it
+       const displayText = selectedTheme?.caps ? text.toUpperCase() : text;
+       
+       const textGeo = new TextGeometry(displayText, {
+         font,
+         size: initialTextSize,
+         depth: selectedProduct.text.thickness + selectedProduct.text.overlap, // Use product thickness + overlap
+         curveSegments: 12,
+         bevelEnabled: false,
+       });
       
       textGeo.computeBoundingBox();
       textGeo.center();

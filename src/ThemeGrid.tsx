@@ -18,8 +18,10 @@ interface ThemePreview {
   scene: THREE.Scene | null;
   camera: THREE.PerspectiveCamera | null;
   renderer: THREE.WebGLRenderer | null;
+  group: THREE.Group | null;
   textMesh: THREE.Mesh | null;
   pillMesh: THREE.Mesh | null;
+  animationTime: number;
 }
 
 export const ThemeGrid: React.FC<ThemeGridProps> = ({
@@ -41,8 +43,10 @@ export const ThemeGrid: React.FC<ThemeGridProps> = ({
       scene: null,
       camera: null,
       renderer: null,
+      group: null,
       textMesh: null,
-      pillMesh: null
+      pillMesh: null,
+      animationTime: 0
     }));
 
     setPreviews(newPreviews);
@@ -78,10 +82,15 @@ export const ThemeGrid: React.FC<ThemeGridProps> = ({
       scene.add(light);
       scene.add(new THREE.AmbientLight(0xffffff, 0.4));
 
+      // Create a group to hold both text and pill
+      const group = new THREE.Group();
+      scene.add(group);
+
       // Store references
       preview.scene = scene;
       preview.camera = camera;
       preview.renderer = renderer;
+      preview.group = group;
 
       // Load font and create preview
       const loader = new FontLoader();
@@ -106,14 +115,14 @@ export const ThemeGrid: React.FC<ThemeGridProps> = ({
   }, [userText, selectedProduct]);
 
   const createPreviewMesh = (preview: ThemePreview, font: any) => {
-    if (!preview.scene || !selectedProduct) return;
+    if (!preview.scene || !preview.group || !selectedProduct) return;
 
     // Clear existing meshes
-    if (preview.textMesh) preview.scene.remove(preview.textMesh);
-    if (preview.pillMesh) preview.scene.remove(preview.pillMesh);
+    if (preview.textMesh) preview.group.remove(preview.textMesh);
+    if (preview.pillMesh) preview.group.remove(preview.pillMesh);
 
-    // Use user text or theme default text
-    const displayText = userText || preview.theme.text;
+    // Apply caps transformation if theme requires it
+    const displayText = preview.theme.caps ? userText.toUpperCase() : userText;
 
     // Create text geometry
     const textGeo = new TextGeometry(displayText, {
@@ -135,7 +144,7 @@ export const ThemeGrid: React.FC<ThemeGridProps> = ({
 
     const textMesh = new THREE.Mesh(textGeo, textMat);
     preview.textMesh = textMesh;
-    preview.scene.add(textMesh);
+    preview.group.add(textMesh);
 
     // Create pill background
     if (textGeo.boundingBox) {
@@ -173,7 +182,7 @@ export const ThemeGrid: React.FC<ThemeGridProps> = ({
 
       const pillMesh = new THREE.Mesh(pillGeo, pillMat);
       preview.pillMesh = pillMesh;
-      preview.scene.add(pillMesh);
+      preview.group.add(pillMesh);
 
       // Position text above pill
       const textZ = selectedProduct.background.thickness - selectedProduct.text.overlap + 
@@ -191,12 +200,15 @@ export const ThemeGrid: React.FC<ThemeGridProps> = ({
   useEffect(() => {
     const animate = () => {
       previews.forEach(preview => {
-        if (preview.scene && preview.camera && preview.renderer && 
-            preview.textMesh && preview.pillMesh) {
+        if (preview.scene && preview.camera && preview.renderer && preview.group) {
           
-          // Rotate previews slowly
-          preview.textMesh.rotation.y += 0.01;
-          preview.pillMesh.rotation.y += 0.01;
+          // Update animation time
+          preview.animationTime += 0.01;
+          
+          // Oscillate between -60 and +60 degrees using a sine wave
+          // Math.sin returns values between -1 and 1, so multiply by π/3 (60 degrees)
+          const rotationAngle = Math.sin(preview.animationTime) * (Math.PI / 3);
+          preview.group.rotation.y = rotationAngle;
           
           preview.renderer.render(preview.scene, preview.camera);
         }
